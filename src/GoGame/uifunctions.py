@@ -1,266 +1,536 @@
-import PySimpleGUI as sg
+"""
+uifunctions.py  (modernised — no PySimpleGUI)
+----------------------------------------------
+All GUI is now pure pygame.  The separate PySimpleGUI window that used to
+embed pygame inside a sg.Graph is gone; instead we run a single full-screen
+pygame window that renders the board *and* the sidebar.
+
+Layout
+──────
+  ┌──────────────────────────────────────────┐
+  │  [Pass] [Save] [Undo] [Quit] [Exit Menu] │  ← button bar  (60 px)
+  ├───────────────────┬──────────────────────┤
+  │                   │                      │
+  │   board area      │    sidebar           │
+  │   (700 × 700)     │    (270 × 700)       │
+  │                   │                      │
+  └───────────────────┴──────────────────────┘
+  Total window: 970 × 760
+"""
+
 import os
 import platform
 import pygame
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import GoGame.config as cf
+import GoGame.pygame_ui as ui
 
+# ── window dimensions ────────────────────────────────────────────────────────
+BOARD_W, BOARD_H = 700, 700
+SIDE_W            = 270
+BTN_BAR_H         = 60
+WIN_W             = BOARD_W + SIDE_W
+WIN_H             = BOARD_H + BTN_BAR_H
+
+# ── colours ──────────────────────────────────────────────────────────────────
+_BOARD_BG   = (220, 179, 92)
+_SIDE_BG    = (40,   36,  30)
+_BAR_BG     = (50,   45,  38)
+_BAR_BORDER = (180, 140,  60)
+_TEXT_COL   = (235, 220, 190)
+_TEXT_DIM   = (160, 145, 115)
+_BTN_NRM    = (80,   68,  42)
+_BTN_HOV    = (120, 100,  52)
+_BTN_TXT    = (240, 225, 180)
+_SEPARATOR  = (100,  88,  60)
+
+# ── button definitions ───────────────────────────────────────────────────────
+_BUTTONS = ["Pass Turn", "Save Game", "Undo Turn", "Quit Program", "Exit To Menu"]
+
+
+def _font(size: int = 16, bold: bool = False) -> pygame.font.Font:
+    try:
+        return pygame.font.SysFont("arial", size, bold=bold)
+    except Exception:
+        return pygame.font.Font(None, size + 4)
+
+
+# ── pygame setup ─────────────────────────────────────────────────────────────
+
+def _ensure_pygame() -> None:
+    if not pygame.get_init():
+        pygame.init()
+
+
+def _make_window() -> pygame.Surface:
+    _ensure_pygame()
+    screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
+    pygame.display.set_caption("GoGame")
+    return screen
+
+
+# ── button-bar helpers ───────────────────────────────────────────────────────
+
+def _button_rects() -> dict:
+    """Return a label → pygame.Rect mapping for the button bar."""
+    n      = len(_BUTTONS)
+    margin = 8
+    total  = WIN_W - margin * (n + 1)
+    bw     = total // n
+    bh     = BTN_BAR_H - 14
+    rects  = {}
+    for i, label in enumerate(_BUTTONS):
+        x = margin + i * (bw + margin)
+        y = 7
+        rects[label] = pygame.Rect(x, y, bw, bh)
+    return rects
+
+
+def _draw_button_bar(screen: pygame.Surface,
+                     btn_rects: dict,
+                     mode: str = "Playing") -> None:
+    bar = pygame.Rect(0, 0, WIN_W, BTN_BAR_H)
+    pygame.draw.rect(screen, _BAR_BG, bar)
+    pygame.draw.line(screen, _BAR_BORDER, (0, BTN_BAR_H - 1), (WIN_W, BTN_BAR_H - 1), 1)
+    mx, my  = pygame.mouse.get_pos()
+    f       = _font(13, bold=True)
+    for label, rect in btn_rects.items():
+        disp  = label
+        # in scoring mode "Quit Program" becomes "Resume Game"
+        if label == "Quit Program" and mode == "Scoring":
+            disp = "Resume Game"
+        hov   = rect.collidepoint(mx, my)
+        colour = _BTN_HOV if hov else _BTN_NRM
+        pygame.draw.rect(screen, colour, rect, border_radius=5)
+        pygame.draw.rect(screen, _BAR_BORDER, rect, width=1, border_radius=5)
+        ts = f.render(disp, True, _BTN_TXT)
+        screen.blit(ts, ts.get_rect(center=rect.center))
+
+
+def _draw_sidebar(screen: pygame.Surface, game_board) -> None:
+    sx = BOARD_W
+    pygame.draw.rect(screen, _SIDE_BG, pygame.Rect(sx, BTN_BAR_H, SIDE_W, BOARD_H))
+    pygame.draw.line(screen, _SEPARATOR, (sx, BTN_BAR_H), (sx, WIN_H), 1)
+
+    pb = game_board.player_black
+    pw = game_board.player_white
+    lines = [
+        ("Turn",    f"{game_board.whose_turn.color}",     True),
+        ("",        f"Turn #{game_board.turn_num}",        False),
+        ("",        "",                                    False),
+        ("Black",   pb.name,                               True),
+        ("",        f"komi: {pb.komi}",                    False),
+        ("",        "",                                    False),
+        ("White",   pw.name,                               True),
+        ("",        f"komi: {pw.komi}",                    False),
+    ]
+
+    f_lbl  = _font(13, bold=True)
+    f_val  = _font(13)
+    y      = BTN_BAR_H + 16
+    x      = sx + 12
+
+    for lbl, val, bold in lines:
+        if lbl:
+            ts = f_lbl.render(f"{lbl}: ", True, _BAR_BORDER)
+            screen.blit(ts, (x, y))
+            ts2 = (f_lbl if bold else f_val).render(val, True, _TEXT_COL)
+            screen.blit(ts2, (x + ts.get_width(), y))
+        else:
+            ts = f_val.render(val, True, _TEXT_DIM)
+            screen.blit(ts, (x, y))
+        y += f_val.get_linesize() + 3
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MAIN-MENU screen (replaces setup_menu + its event loop)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def start_game_menu() -> str:
+    """
+    Draws the main menu and returns the chosen action string:
+      'Choose File' | 'New Game From Custom' | 'New Game From Default'
+    | 'Play Against AI' | 'AI SelfPlay' | 'AI Training' | 'Exit Game'
+    """
+    screen = _make_window()
+    clock  = pygame.time.Clock()
+
+    menu_buttons = [
+        "Choose File",
+        "New Game From Custom",
+        "New Game From Default",
+        "Play Against AI",
+        "AI SelfPlay",
+        "AI Training",
+        "Exit Game",
+    ]
+
+    f_title = _font(26, bold=True)
+    f_sub   = _font(14)
+    f_btn   = _font(16, bold=True)
+
+    btn_w, btn_h = 280, 46
+    gap          = 12
+    start_y      = 220
+
+    def _btn_rects():
+        rects = {}
+        for i, lbl in enumerate(menu_buttons):
+            x = WIN_W // 2 - btn_w // 2
+            y = start_y + i * (btn_h + gap)
+            rects[lbl] = pygame.Rect(x, y, btn_w, btn_h)
+        return rects
+
+    while True:
+        mx, my = pygame.mouse.get_pos()
+        screen.fill((35, 30, 25))
+
+        ts_t = f_title.render("Evan's Go Game", True, (220, 185, 90))
+        screen.blit(ts_t, ts_t.get_rect(centerx=WIN_W // 2, y=80))
+        ts_s = f_sub.render(
+            "9×9 default · 7.5 komi · Player 1 vs Player 2",
+            True, _TEXT_DIM)
+        screen.blit(ts_s, ts_s.get_rect(centerx=WIN_W // 2, y=140))
+
+        rects = _btn_rects()
+        for lbl, rect in rects.items():
+            hov = rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, _BTN_HOV if hov else _BTN_NRM, rect, border_radius=8)
+            pygame.draw.rect(screen, _BAR_BORDER, rect, width=1, border_radius=8)
+            ts = f_btn.render(lbl, True, _BTN_TXT)
+            screen.blit(ts, ts.get_rect(center=rect.center))
+
+        pygame.display.flip()
+
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                return "Exit Game"
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                for lbl, rect in rects.items():
+                    if rect.collidepoint(ev.pos):
+                        return lbl
+        clock.tick(60)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BOARD-SIZE chooser  (was start_game)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def start_game() -> int:
-    '''Starts the game, asking for user input regarding the size of the board.'''
-    info = "Please click the size you wish to have your Go Board as."
+    """Ask the player to choose board size. Returns 9, 13, or 19."""
+    screen = pygame.display.get_surface() or _make_window()
+    snapshot = screen.copy()
+    clock = pygame.time.Clock()
 
-    layout = [[sg.Text(info)],
-              [sg.Button("9x9", font=('Arial Bold', 16)),
-              sg.Button("13x13", font=('Arial Bold', 16)),
-              sg.Button("19x19", font=('Arial Bold', 16))]]
-    window2 = sg.Window('Game Screen', layout, size=(200, 200), finalize=True)
-    option, _ = window2.read()
-    window2.close()
-    if option == "9x9":
-        return 9
-    elif option == "13x13":
-        return 13
-    else:
-        return 19
+    options = [("9×9", 9), ("13×13", 13), ("19×19", 19)]
+    f       = _font(20, bold=True)
+    f_info  = _font(15)
+    btn_w, btn_h = 120, 52
+    gap  = 24
+    cx   = screen.get_width() // 2
+    cy   = screen.get_height() // 2
 
+    total  = btn_w * 3 + gap * 2
+    starts = [cx - total // 2 + i * (btn_w + gap) for i in range(3)]
+    rects  = [(pygame.Rect(x, cy + 20, btn_w, btn_h), lbl, val)
+              for (lbl, val), x in zip(options, starts)]
+
+    panel_r = pygame.Rect(cx - 260, cy - 60, 520, 170)
+
+    while True:
+        mx, my = pygame.mouse.get_pos()
+        screen.blit(snapshot, (0, 0))
+        _overlay_dark(screen)
+        pygame.draw.rect(screen, (55, 48, 38), panel_r, border_radius=12)
+        pygame.draw.rect(screen, _BAR_BORDER,  panel_r, width=2, border_radius=12)
+        ts = f_info.render("Choose board size:", True, _TEXT_COL)
+        screen.blit(ts, ts.get_rect(centerx=cx, y=cy - 36))
+        for rect, lbl, _ in rects:
+            hov = rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, _BTN_HOV if hov else _BTN_NRM, rect, border_radius=8)
+            pygame.draw.rect(screen, _BAR_BORDER, rect, width=1, border_radius=8)
+            ts = f.render(lbl, True, _BTN_TXT)
+            screen.blit(ts, ts.get_rect(center=rect.center))
+        pygame.display.flip()
+
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); import sys; sys.exit()
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                for rect, _, val in rects:
+                    if rect.collidepoint(ev.pos):
+                        screen.blit(snapshot, (0, 0))
+                        pygame.display.flip()
+                        return val
+        clock.tick(60)
+
+
+def _overlay_dark(surf: pygame.Surface) -> None:
+    ov = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
+    ov.fill((0, 0, 0, 150))
+    surf.blit(ov, (0, 0))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  HANDICAP choosers
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def handicap_person_gui() -> str:
-    '''Asks for user input regarding which player will get a handicap'''
-    info = "Please enter some information regarding a handicap. Which player will get a handicap?"
-
-    layout = [[sg.Text(info)],
-              [sg.Button("Black", font=('Arial Bold', 16)),
-              sg.Button("White", font=('Arial Bold', 16))],
-              [sg.Button("I don't want a handicap", font=('Arial Bold', 16))]]
-    window2 = sg.Window('Game Screen', layout, size=(200, 200), finalize=True)
-    option, _ = window2.read()
-    window2.close()
-    return option
+    """Returns 'Black', 'White', or \"I don't want a handicap\"."""
+    return _button_choice_dialog(
+        "Which player gets a handicap?",
+        ["Black", "White", "I don't want a handicap"]
+    )
 
 
 def handicap_number_gui(board_size: int) -> int:
-    '''Asks for user input regarding the handicap size'''
-    info = "Please enter some information regarding a handicap. How large is the handicap?"
-    deflt = ('Arial Bold', 16)
-    layout = [[sg.Text(info)],
-              [sg.Button("1", font=deflt), sg.Button("2", font=deflt), sg.Button("3", font=deflt)],
-              [sg.Button("4", font=deflt), sg.Button("5", font=deflt), sg.Button("6", font=deflt)],
-              [sg.Button("7", font=deflt), sg.Button("8", font=deflt), sg.Button("9", font=deflt)]]
-    layout2 = [[sg.Text(info)],
-               [sg.Button("1", font=deflt), sg.Button("2", font=deflt), sg.Button("3", font=deflt)],
-               [sg.Button("4", font=deflt), sg.Button("5", font=deflt)]]
-    if board_size == 9:
-        window2 = sg.Window('Game Screen', layout2, size=(200, 200), finalize=True)
-    else:
-        window2 = sg.Window('Game Screen', layout, size=(200, 200), finalize=True)
-    option, _ = window2.read()
-    window2.close()
-    return int(option)
+    """Returns the chosen handicap integer (1-9, capped at 5 for 9x9)."""
+    max_h = 5 if board_size == 9 else 9
+    labels = [str(i) for i in range(1, max_h + 1)]
+    result = _button_choice_dialog("How large is the handicap?", labels)
+    return int(result)
 
 
-def setup_menu():
-    '''Sets up the main window using PySimpleGUI'''
-    layout = [
-        [sg.Text(text='Welcome to Evan\'s Go Game ',
-                 font=('Arial Bold', 20),
-                 size=20,
-                 expand_x=True,
-                 justification='center')],
-        [sg.Text(
-            text='The default settings are a 9x9 board, 7.5 komi, and names for players of Player 1 and Player 2', key="Info",
-            font=('Arial', 12),
-            size=20,
-            expand_x=True,
-            justification='center')],
-        [sg.Button("Choose File", font=('Arial Bold', 12)),
-            sg.Button("New Game From Custom", font=('Arial Bold', 12)),
-            sg.Button("New Game From Default", font=('Arial Bold', 12))],
-        [sg.Button("Play Against AI", font=('Arial Bold', 12)),
-         sg.Button("AI SelfPlay", font=('Arial Bold', 12)),
-         sg.Button("AI Training", font=('Arial Bold', 12)),
-         sg.Cancel("Exit Game", font=('Arial Bold', 12))]]
-    window = sg.Window('Game Screen', layout, size=(700, 700), finalize=True)
-    return window
+def _button_choice_dialog(prompt: str, options: list) -> str:
+    """Generic button-grid popup. Returns the label of the clicked button."""
+    screen   = pygame.display.get_surface() or _make_window()
+    snapshot = screen.copy()
+    clock    = pygame.time.Clock()
+    f_info   = _font(15)
+    f_btn    = _font(15, bold=True)
+    cx, cy   = screen.get_width() // 2, screen.get_height() // 2
+
+    # lay out in rows of up to 4
+    per_row  = 4
+    btn_w, btn_h = 160, 46
+    gap = 12
+    rows = [options[i:i+per_row] for i in range(0, len(options), per_row)]
+    total_h = len(rows) * (btn_h + gap) - gap + 60
+    panel_r = pygame.Rect(cx - 340, cy - total_h // 2 - 20, 680, total_h + 50)
+
+    def _rects():
+        rs = []
+        for ri, row in enumerate(rows):
+            row_total = btn_w * len(row) + gap * (len(row) - 1)
+            ox = cx - row_total // 2
+            for ci, lbl in enumerate(row):
+                x = ox + ci * (btn_w + gap)
+                y = panel_r.y + 50 + ri * (btn_h + gap)
+                rs.append((pygame.Rect(x, y, btn_w, btn_h), lbl))
+        return rs
+
+    result = [None]
+    while result[0] is None:
+        mx, my = pygame.mouse.get_pos()
+        screen.blit(snapshot, (0, 0))
+        _overlay_dark(screen)
+        pygame.draw.rect(screen, (55, 48, 38), panel_r, border_radius=12)
+        pygame.draw.rect(screen, _BAR_BORDER,  panel_r, width=2, border_radius=12)
+        ts = f_info.render(prompt, True, _TEXT_COL)
+        screen.blit(ts, ts.get_rect(centerx=cx, y=panel_r.y + 14))
+        for rect, lbl in _rects():
+            hov = rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, _BTN_HOV if hov else _BTN_NRM, rect, border_radius=7)
+            pygame.draw.rect(screen, _BAR_BORDER, rect, width=1, border_radius=7)
+            ts = f_btn.render(lbl, True, _BTN_TXT)
+            screen.blit(ts, ts.get_rect(center=rect.center))
+        pygame.display.flip()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); import sys; sys.exit()
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                for rect, lbl in _rects():
+                    if rect.collidepoint(ev.pos):
+                        result[0] = lbl
+        clock.tick(60)
+
+    screen.blit(snapshot, (0, 0))
+    pygame.display.flip()
+    return result[0]
 
 
-def setup_board_window_pygame(game_board):
-    '''Sets up the window for playing the game using PySimpleGUI'''
-    text = f"It is currently {game_board.whose_turn.color}'s turn. \n"
-    text = text + f"Turn Number is {game_board.turn_num}\n\n\n\
-    Player 1 Name: {game_board.player_black.name}\nPlayer 1 Color: Black\n\
-    Player 1 komi: {game_board.player_black.komi}\n\n\nPlayer 2 Name: {game_board.player_white.name}\n\
-    Player 2 Color: White\nPlayer 2 komi: {game_board.player_white.komi}"
-    layout_buttons = [
-        [sg.Button("Pass Turn", font=('Arial Bold', 12)),
-         sg.Button("Save Game", font=('Arial Bold', 12)),
-         sg.Button("Undo Turn", font=('Arial Bold', 12)),
-         sg.Button("Quit Program", font=('Arial Bold', 12), key="Res"),
-         sg.Button("Exit To Menu", font=('Arial Bold', 12), key="Exit Game")]
-    ]
-    layout_board = [[sg.Graph((700, 700), (0, 700), (700, 0), key='-GRAPH-', enable_events=True)]]
-    layout_sidebar = [[sg.Multiline(text, font=('Arial Bold', 12), size=10, expand_x=True, expand_y=True,
-                      key='Scoring', justification='center')]]
-    full_layout = [[layout_buttons,
-                    sg.Column(layout_sidebar, expand_x=True, expand_y=True),
-                   sg.VSeparator(),
-                   sg.Column(layout_board)]]
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BOARD WINDOW setup  (replaces setup_board_window_pygame)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    window = sg.Window('Game Screen', full_layout, size=(1000, 900), resizable=True, finalize=True)
-    graph = window['-GRAPH-']
+def setup_board_window_pygame(game_board) -> None:
+    """
+    Initialise (or re-use) the pygame window for the game board.
+    Stores screen + button_rects on game_board so the game loop can use them.
+    (No return value — replaces the old sg.Window return.)
+    """
+    _ensure_pygame()
+    screen = pygame.display.get_surface()
+    if screen is None or screen.get_size() != (WIN_W, WIN_H):
+        screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
+        pygame.display.set_caption("GoGame")
 
-    embed = graph.TKCanvas
-    os.environ['SDL_WINDOWID'] = str(embed.winfo_id())
-    if platform.system() == "Linux":
-        os.environ['SDL_VIDEODRIVER'] = "x11"
-    elif platform.system() == "Windows":
-        os.environ['SDL_VIDEODRIVER'] = 'windib'
-    screen = pygame.display.set_mode((700, 700))
-    game_board.screen = screen
-    game_board.window = window
-    pygame.display.init()
-    while True:
-        _, _ = window.read(timeout=100)
-        pygame.display.update()
-        break
-    screen.fill(pygame.Color(200, 162, 200))
-    draw_gameboard(game_board, screen)
-    pygame.display.update()
-    return window
+    game_board.screen      = screen
+    game_board.window      = None          # sentinel: no sg.Window anymore
+    game_board.btn_rects   = _button_rects()
+
+    screen.fill((30, 27, 22))
+    _draw_button_bar(screen, game_board.btn_rects, game_board.mode)
+    _draw_sidebar(screen, game_board)
+
+    board_surf = pygame.Surface((BOARD_W, BOARD_H))
+    board_surf.fill(_BOARD_BG)
+    draw_gameboard(game_board, board_surf)
+    screen.blit(board_surf, (0, BTN_BAR_H))
+    game_board.backup_board = board_surf
+    pygame.display.flip()
 
 
-def validation_gui(info1, var_type):
-    '''Makes sure the player enters a valid type of information.'''
+# ═══════════════════════════════════════════════════════════════════════════════
+#  POPUPS / info helpers  (thin wrappers around pygame_ui)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def validation_gui(info1: str, var_type):
+    """Prompt with a text-input dialog until a valid value is entered."""
     output = None
     while output is None:
-        sg.popup(info1, line_width=42, auto_close=True, auto_close_duration=15)
-        output = (sg.popup_get_text("Enter Information", title="Please Enter Text", font=('Arial Bold', 15)))
-    output = var_type(output)
-    return output
+        output = ui.popup_get_text(info1, title="Enter Information")
+    return var_type(output)
 
 
-def update_scoring(self):
-    '''Updates the scoring in the PySimpleGui window.'''
-    text = f"It is currently {self.whose_turn.color}'s turn. \n"
-    text = text + f"Turn Number is {self.turn_num}\n\n\nPlayer 1 Name: {self.player_black.name}\nPlayer 1 Color: Black\n\
-    Player 1 komi: {self.player_black.komi}\n\n\nPlayer 2 Name: {self.player_white.name}\n\
-    Player 2 Color: White\nPlayer 2 komi: {self.player_white.komi}"
-    self.window['Scoring'].update(text)
+def update_scoring(board) -> None:
+    """Redraw the sidebar with fresh info (called every turn)."""
+    screen = pygame.display.get_surface()
+    if screen is None:
+        return
+    _draw_sidebar(screen, board)
+    pygame.display.flip()
 
 
-def scoring_mode_popup():
-    '''Popup that requests the player remove stones they believe are dead.'''
-    info = "Please take turns clicking on stones that you believe are dead, and then the program will score.\
-        \n Please pass twice once you are finished scoring."
-    sg.popup(info, title="Scoring", line_width=200, auto_close=True, auto_close_duration=3)
+def scoring_mode_popup() -> None:
+    ui.popup(
+        "Click stones you believe are dead, then pass twice to finish scoring.",
+        title="Scoring Mode",
+        auto_close=True, auto_close_duration=3
+    )
 
 
-def end_game_popup(self):
-    '''Popup that shows the score at the end of the game.'''
-    pb = self.player_black
-    pw = self.player_white
-    player_black_score = pb.komi + pb.territory + pb.black_set_len
-    player_white_score = pw.komi + pw.territory + pw.white_set_len
-    difference = player_black_score - player_white_score
-    info = f"Your game has finished.\nPlayer Black: {pb.name} has {pb.territory} territory\
-            , and played {pb.black_set_len} pieces and has a komi of {pb.komi}\
-            \n Player White: {pw.name} has {pw.territory} territory, and played {pw.white_set_len} pieces\
-              and has a komi of {pw.komi}\n Player Black has a score of {player_black_score}\n\
-            Player White has a score of {player_white_score}, meaning "
-    if difference > 0:
-        info = info + f"Player Black won by {difference} points"
-    else:
-        info = info + f"Player White won by {difference * -1} points"
-    sg.popup(info, title="Game has Concluded", line_width=200, auto_close=True, auto_close_duration=20)
+def end_game_popup(board) -> None:
+    pb = board.player_black
+    pw = board.player_white
+    bs = pb.komi + pb.territory + pb.black_set_len
+    ws = pw.komi + pw.territory + pw.white_set_len
+    diff = bs - ws
+    winner = (f"Black wins by {diff} pts" if diff > 0 else f"White wins by {-diff} pts")
+    msg = (f"Game over!\n\n"
+           f"Black ({pb.name}):  territory {pb.territory} + "
+           f"captures {pb.black_set_len} + komi {pb.komi} = {bs}\n"
+           f"White ({pw.name}):  territory {pw.territory} + "
+           f"captures {pw.white_set_len} + komi {pw.komi} = {ws}\n\n"
+           f"{winner}")
+    ui.popup(msg, title="Game Concluded", auto_close=True, auto_close_duration=20)
 
 
-def default_popup_no_button(info, time):
-    '''Popup with some pre-defined default values'''
-    sg.popup_no_buttons(info, non_blocking=True, font=('Arial Bold', 15),
-                        auto_close=True, auto_close_duration=time)
+def default_popup_no_button(info: str, time: float) -> None:
+    ui.popup_no_buttons(info, auto_close_duration=time, non_blocking=True)
 
 
-def def_popup(info, time):
-    '''Popup with some pre-defined default values'''
-    sg.popup(info, line_width=42, auto_close=True, auto_close_duration=time)
+def def_popup(info: str, time: float) -> None:
+    ui.popup(info, auto_close=True, auto_close_duration=time)
 
 
-def draw_gameboard(game_board, screen, gameboard_surface=pygame.surface.Surface((700, 700))):
-    '''Draws the gameboard using pygame'''
-    workable_area: int = 620
-    distance: float = workable_area / (game_board.board_size - 1)
-    circle_radius: float = distance / 3
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BOARD DRAWING  (unchanged logic, adapted surface target)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def draw_gameboard(game_board, surface: Optional[pygame.Surface] = None) -> None:
+    """Draw the empty board grid + stars onto *surface* (defaults to backup_board)."""
+    if surface is None:
+        surface = getattr(game_board, "backup_board", None)
+    if surface is None:
+        return
+    workable_area = 620
+    distance      = workable_area / (game_board.board_size - 1)
+    circle_radius = distance / 3
     game_board.pygame_board_vals = (workable_area, distance, circle_radius)
-    gameboard_surface.fill(pygame.Color(200, 162, 200))
-    draw_lines(game_board, distance, gameboard_surface)
-    stars_pygame(game_board, gameboard_surface, circle_radius)
-    screen.blit(gameboard_surface, (0, 0))
-    game_board.backup_board = gameboard_surface
+    surface.fill(_BOARD_BG)
+    draw_lines(game_board, distance, surface)
+    stars_pygame(game_board, surface, circle_radius)
 
 
-def draw_lines(game_board, distance, gameboard_surface):
-    '''Draws lines for adding to the screen.'''
+def draw_lines(game_board, distance: float, surface: pygame.Surface) -> None:
     for xidx in range(game_board.board_size):
-        x_val: float = 40 + xidx * distance
-        x_val_previous: float = x_val - distance
+        x_val = 40 + xidx * distance
         for yidx in range(game_board.board_size):
-            y_val: float = 40 + yidx * distance
-            y_val_previous: float = y_val - distance
+            y_val = 40 + yidx * distance
             if xidx > 0:
-                pygame.draw.line(gameboard_surface, (0, 0, 0), (x_val_previous, y_val), (x_val, y_val))
+                pygame.draw.line(surface, (0, 0, 0),
+                                 (x_val - distance, y_val), (x_val, y_val))
             if yidx > 0:
-                pygame.draw.line(gameboard_surface, (0, 0, 0), (x_val, y_val_previous), (x_val, y_val))
+                pygame.draw.line(surface, (0, 0, 0),
+                                 (x_val, y_val - distance), (x_val, y_val))
 
 
-def stars_pygame(self, window, circle_radius: float):
-    '''Draws the stars on the gameboard using pygame'''
-    size: int = self.board_size
-    lst9: List[Tuple[int, int]] = ((2, 2), (size - 3, 2), (size - 3, size - 3), (2, size - 3))
-    lst_not_9: List[Tuple[int, int]] = ((3, 3), (size - 4, 3), (size - 4, size - 4), (3, size - 4))
+def stars_pygame(board, surface: pygame.Surface, circle_radius: float) -> None:
+    size = board.board_size
     if size == 9:
-        for item in lst9:
-            node = self.board[item[0]][item[1]]
-            pygame.draw.circle(window, (255, 165, 0), (node.screen_row, node.screen_col), circle_radius)
+        pts = [(2, 2), (size-3, 2), (size-3, size-3), (2, size-3)]
     else:
-        for item in lst_not_9:
-            node = self.board[item[0]][item[1]]
-            pygame.draw.circle(window, (255, 165, 0), (node.screen_row, node.screen_col), circle_radius)
+        pts = [(3, 3), (size-4, 3), (size-4, size-4), (3, size-4)]
+    for r, c in pts:
+        node = board.board[r][c]
+        pygame.draw.circle(surface, (255, 165, 0),
+                           (node.screen_row, node.screen_col), circle_radius)
 
 
-def switch_button_mode(board) -> None:
-    '''Updates the button text in the PySimpleGui window'''
-    if board.mode == "Scoring":
-        board.window["Res"].update("Resume Game")
-        board.times_passed = 0
-    elif board.mode == "Playing":
-        board.window["Res"].update("Quit Program")
-    board.mode_change = False
-
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BOARD REFRESH  (blits backup_board + stones to the screen)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def refresh_board_pygame(board) -> None:
-    '''Refreshes the pygame screen to show the updated board'''
-    board.screen.blit(board.backup_board, (0, 0))
-    for board_row in board.board:
-        for item in board_row:
-            if item.stone_here_color == cf.rgb_black or item.stone_here_color == cf.rgb_white:
-                pygame.draw.circle(board.screen, item.stone_here_color,
-                                   (item.screen_row, item.screen_col), board.pygame_board_vals[2])
-            elif item.stone_here_color == cf.rgb_lavender or item.stone_here_color == cf.rgb_peach:
-                pygame.draw.circle(board.screen, item.stone_here_color,
-                                   (item.screen_row, item.screen_col), board.pygame_board_vals[2])
-            elif item.stone_here_color == cf.rgb_green or item.stone_here_color == cf.rgb_red:
-                pygame.draw.circle(board.screen, item.stone_here_color,
-                                   (item.screen_row, item.screen_col), board.pygame_board_vals[2])
-    pygame.display.update()
+    """Redraw stones on top of the background board surface, then flip."""
+    screen = board.screen
+    if screen is None:
+        return
+
+    # blit the clean board background into the board area
+    screen.blit(board.backup_board, (0, BTN_BAR_H))
+
+    for row in board.board:
+        for node in row:
+            c = node.stone_here_color
+            if c in (cf.rgb_black, cf.rgb_white,
+                     cf.rgb_lavender, cf.rgb_peach,
+                     cf.rgb_green, cf.rgb_red):
+                # offset y by BTN_BAR_H so stones sit in the board area
+                pygame.draw.circle(
+                    screen, c,
+                    (int(node.screen_row), int(node.screen_col) + BTN_BAR_H),
+                    int(board.pygame_board_vals[2])
+                )
+
+    _draw_button_bar(screen, board.btn_rects, board.mode)
+    _draw_sidebar(screen, board)
+    pygame.display.flip()
 
 
-def close_window(board):
-    '''Closes the pygame display and PySimpleGui window'''
-    import platform
-    if platform.system() == "Linux":
-        board.window.close()
-    elif platform.system() == "Windows":
-        board.window.close()
-        del board.window
+# ═══════════════════════════════════════════════════════════════════════════════
+#  MODE SWITCH  (updates button label; replaces switch_button_mode)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def switch_button_mode(board) -> None:
+    if board.mode == "Scoring":
+        board.times_passed = 0
+    board.mode_change = False
+    refresh_board_pygame(board)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  WINDOW CLOSE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def close_window(board) -> None:
+    """Release pygame display resources (called before returning to menu)."""
+    try:
         del board.backup_board
-        pygame.display.quit()
+    except AttributeError:
+        pass
+    board.screen = None
+    board.window = None
+    pygame.display.quit()
+    pygame.display.init()   # keep pygame alive for the menu

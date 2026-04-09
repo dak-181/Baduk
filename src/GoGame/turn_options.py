@@ -1,17 +1,24 @@
-import PySimpleGUI as sg
 import GoGame.uifunctions as ui
+import GoGame.pygame_ui as pg_ui
 from GoGame.goclasses import GoBoard
 from typing import Optional
+
+# sentinel that matches the old sg.WIN_CLOSED usage
+WIN_CLOSED = None
 
 
 def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> None:
     '''
     Handles various game options based on the given event.
-    Options include (Pass Turn, Res, WIN_CLOSED, Save Game, Undo Turn, Exit Game).
-    When in scoring mode, Res stands for Resume Game, otherwise it means Quit Program.
+    Options: Pass Turn, Quit Program, WIN_CLOSED, Save Game, Undo Turn, Exit To Menu.
+    In scoring mode "Quit Program" is shown as "Resume Game" in the UI,
+    but the event value passed here is still "Quit Program".
     '''
-    if event in (sg.WIN_CLOSED, "Res"):
-        quit()
+    if event in (WIN_CLOSED, "Quit Program"):
+        import pygame, sys
+        pygame.quit()
+        sys.exit()
+
     if event == "Pass Turn":
         ui.def_popup("Skipped turn", 0.5)
         board.times_passed += 1
@@ -19,27 +26,34 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
         board.position_played_log.append((text, -3, -3))
         board.killed_log.append([])
         board.switch_player()
+
     elif event == "Save Game":
         from GoGame.saving_loading import save_pickle
         save_pickle(board)
+
     elif event == "Undo Turn":
         if board.turn_num == 0:
             ui.def_popup("You can't undo when nothing has happened.", 2)
-        elif board.turn_num >= 1:
+        else:
             from GoGame.undoing import undo_checker
             undo_checker(board)
             return
-    elif event == "Exit Game":
+
+    elif event == "Exit To Menu":
         from GoGame.main import play_game_main
         ui.close_window(board)
         play_game_main()
-        quit()
+        import sys; sys.exit()
+
     else:
-        raise ValueError
+        raise ValueError(f"Unhandled event: {event!r}")
 
 
 def remove_dead_turn_options(board: GoBoard, event) -> bool:
-    '''Handles events related to removing dead stones during scoring. Only returns True if the player clicked a piece.'''
+    '''
+    Handles events during the dead-stone removal / scoring phase.
+    Returns True only if the player clicked a board intersection.
+    '''
     if event == "Pass Turn":
         normal_turn_options(board, event, text="Scoring Passed")
         return False
@@ -47,7 +61,8 @@ def remove_dead_turn_options(board: GoBoard, event) -> bool:
         from GoGame.saving_loading import save_pickle
         save_pickle(board)
         return False
-    elif event == "Res":
+    elif event == "Quit Program":
+        # In scoring mode this button is labelled "Resume Game" in the UI
         board.mode = "Playing"
         board.mode_change = True
         board.resuming_scoring_buffer("Resumed")
@@ -55,9 +70,11 @@ def remove_dead_turn_options(board: GoBoard, event) -> bool:
     elif event == "Undo Turn":
         normal_turn_options(board, event)
         return False
-    elif event == "Exit Game":
+    elif event == "Exit To Menu":
         normal_turn_options(board, event)
-    elif event == sg.WIN_CLOSED:
-        quit()
+        return False
+    elif event == WIN_CLOSED:
+        import pygame, sys
+        pygame.quit(); sys.exit()
     else:
         return True

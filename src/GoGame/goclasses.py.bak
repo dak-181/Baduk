@@ -205,40 +205,9 @@ class GoBoard():
         return valid_neighbors
 
     def read_window(self) -> Tuple[str, dict]:
-        '''
-        Pygame event loop replacement for sg.Window.read().
-        Returns (event_name, values) where:
-          - event_name is a button label string, None (WIN_CLOSED), or "-GRAPH-"
-          - values is {"-GRAPH-": (x, y)} when a board click occurs
-        '''
-        import pygame
-        import GoGame.uifunctions as _ui
-        clock = pygame.time.Clock()
-        while True:
-            for ev in pygame.event.get():
-                if ev.type == pygame.QUIT:
-                    return None, {}
-
-                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                    mx, my = ev.pos
-
-                    # check button bar first
-                    for label, rect in self.btn_rects.items():
-                        if rect.collidepoint(mx, my):
-                            return label, {}
-
-                    # click was in the board area (below the button bar)
-                    board_y = my - _ui.BTN_BAR_H
-                    if board_y >= 0:
-                        return "-GRAPH-", {"-GRAPH-": (mx, board_y)}
-
-                if ev.type == pygame.KEYDOWN:
-                    if ev.key == pygame.K_ESCAPE:
-                        return None, {}
-
-            # keep rendering while waiting for input
-            _ui.refresh_board_pygame(self)
-            clock.tick(60)
+        '''Reads the window for any input values from clicks, and returns those values.'''
+        event, values = self.window.read()
+        return event, values
 
     def switch_player(self) -> None:
         '''Switches the current player by updating whose_turn and not_whose_turn'''
@@ -301,10 +270,12 @@ class GoBoard():
         '''Allows the user to view a completed game'''
         ui.refresh_board_pygame(self)
         event, _ = self.read_window()
-        if event in ("Exit To Menu", None):
+        if event == "Exit Game":
             from GoGame.main import play_game_main
             ui.close_window(self)
             play_game_main()
+            quit()
+        elif event == sg.WIN_CLOSED:
             quit()
 
     def scoring_block(self) -> bool:
@@ -323,7 +294,9 @@ class GoBoard():
                 remove_dead(self)
                 if self.times_passed == 2:
                     self.mode = "Finished"
-
+            if self.mode_change:
+                if not self.mode == "Scoring":
+                    self.window["Res"].update("Quit Program")
             while (self.times_passed <= 1):
                 self.play_turn()
             if self.times_passed == 2 and self.mode == "Playing":
@@ -366,7 +339,7 @@ class GoBoard():
             if event != "-GRAPH-":
                 from GoGame.turn_options import normal_turn_options
                 normal_turn_options(self, event, text="Passed")
-                if event in ("Pass Turn", "Quit Program", "Undo Turn", "Exit To Menu", None):
+                if event == "Pass Turn" or event == "Res" or event == "Undo Turn":
                     return
             else:
                 truth_value = self.play_turn_piece_placement(values)
