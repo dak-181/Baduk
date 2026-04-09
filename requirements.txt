@@ -1,3 +1,13 @@
-PySimpleGui==4.60.2
-pygame==2.5.2
-tensorflow==2.12
+# GoGame – modernised dependencies
+# Tested on Python 3.11 / 3.12
+
+pygame>=2.5.0
+numpy>=1.24.0
+
+# TensorFlow / Keras (only needed for the AI training features)
+# Comment these out if you just want to play hotseat without the AI
+tensorflow>=2.13.0
+keras>=2.13.0
+
+# Packaging
+pyinstaller>=6.3.0
