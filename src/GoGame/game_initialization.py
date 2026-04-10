@@ -19,6 +19,16 @@ def initializing_game(board_size: int, defaults: bool = True,
     game_board.play_game(fixes_handicap=handicap_info)
 
 
+def initializing_game_vs_nn(weights_path: str, defaults: bool = True) -> None:
+    """Start a human vs neural-net game using the given .h5 weights file."""
+    import GoGame.config as cf
+    from GoGame.botnormalgo import NNBotBoard
+    board_size = cf.AI_BOARD_SIZE
+    game_board = NNBotBoard(board_size, defaults, weights_path=weights_path)
+    ui.setup_board_window_pygame(game_board)
+    game_board.play_game(fixes_handicap=False)
+
+
 def choose_board_type(vs_bot: bool = False, board_size: int = 9, defaults: bool = True):
     '''
     Choose the correct type of board (GoBoard or BotBoard).

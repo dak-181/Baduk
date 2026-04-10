@@ -50,7 +50,8 @@ def save_pickle_name_choice() -> Union[None, str]:
 
     while True:
         text = "Enter a save-file name (no extension):"
-        filename = pg_ui.popup_get_text(text, title="Save Game")
+        filename = pg_ui.popup_get_text(text, title="Save Game",
+                                        ok_label="Save", cancel_label="Don't Save")
         if filename is None:
             return None
         filename = filename.strip()

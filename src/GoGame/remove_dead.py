@@ -28,7 +28,7 @@ def remove_dead(board: GoBoard) -> None:
             continue
 
         if piece.stone_here_color == cf.rgb_grey:
-            ui.def_popup("You can't mark empty areas as dead.", 1)
+            ui.def_popup("You can't mark empty areas as dead.", 2)
             continue
 
         # if stone is already marked dead (faded) — toggle it back to alive
@@ -40,9 +40,8 @@ def remove_dead(board: GoBoard) -> None:
         # live stone — mark its whole connected group as dead (faded)
         _mark_group_dead(board, piece)
         ui.refresh_board_pygame(board)
-        break
-
-    board.switch_player()
+        board.switch_player()
+        return
 
 
 def _mark_group_dead(board: GoBoard, piece: BoardNode) -> None:
@@ -68,6 +67,26 @@ def _mark_group_dead(board: GoBoard, piece: BoardNode) -> None:
             item.stone_here_color = cf.rgb_lavender
 
     board.dead_stone_log.append(piece_string)
+
+
+def restore_all_dead(board: GoBoard) -> None:
+    '''Restores all faded dead stones to their original colors, clears dead_stone_log,
+    and resets whose_turn to what it was when scoring began.'''
+    if not hasattr(board, 'dead_stone_log'):
+        return
+    for piece_string in board.dead_stone_log:
+        for (row, col), original_color in piece_string:
+            board.board[row][col].stone_here_color = original_color
+    board.dead_stone_log = []
+    # restore the correct player turn
+    if hasattr(board, 'scoring_start_turn'):
+        if board.scoring_start_turn == board.player_black:
+            board.whose_turn = board.player_black
+            board.not_whose_turn = board.player_white
+        else:
+            board.whose_turn = board.player_white
+            board.not_whose_turn = board.player_black
+    ui.refresh_board_pygame(board)
 
 
 def _restore_group(board: GoBoard, piece: BoardNode) -> None:

@@ -294,8 +294,7 @@ class GoBoard():
         return self.playing_mode_end_of_game()
 
     def playing_mode_end_of_game(self) -> bool:
-        'Calls the ui.end_game_popup, and then calls self.scoring_block. Returns a bool indicating who won. T/1 means Black won.'
-        ui.scoring_mode_popup()
+        'Calls scoring_block to handle scoring. Returns a bool indicating who won. T/1 means Black won.'
         return self.scoring_block()
 
     def play_game_view_endgame(self) -> None:
@@ -319,12 +318,18 @@ class GoBoard():
         while self.mode != "Finished":
             if self.mode_change:
                 ui.switch_button_mode(self)
+                if self.mode == "Scoring":
+                    ui.scoring_mode_popup()
             while self.mode == "Scoring":
                 from GoGame.remove_dead import remove_dead, finalize_dead_stones
                 remove_dead(self)
-                if self.times_passed == 2:
+                if self.times_passed >= 1:
                     finalize_dead_stones(self)
                     self.mode = "Finished"
+                    break
+
+            if self.mode == "Finished":
+                break
 
             while (self.times_passed <= 1):
                 self.play_turn()
@@ -342,6 +347,9 @@ class GoBoard():
         self.turn_num += 1
         self.position_played_log.append(text)
         self.killed_log.append([])
+        # save the correct turn when entering scoring so it can be restored on resume
+        if text == "Scoring":
+            self.scoring_start_turn = self.whose_turn
 
     def end_of_game(self) -> None:
         '''Handles the end of the game, i.e. displaying the winner, saving the game state, and returning to the main menu.'''

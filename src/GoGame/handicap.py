@@ -53,7 +53,7 @@ class Handicap():
     def manual_handicap_placement(self, handicap_info: int) -> None:
         '''Allows the player to choose where to place their handicap pieces.'''
         ui.def_popup(f"Please place {handicap_info} number of pieces where you wish,\
-                    as a handicap.Then the opponent will play.", 3)
+                    as a handicap.Then the opponent will play.", 2)
         for _ in range(handicap_info):
             piece = self.validate_handicap_placement()
             self.go_board.times_passed = 0
@@ -101,8 +101,8 @@ class Handicap():
 
     def handle_special_events(self, event):
         '''Handles special events during handicap placement.'''
-        while event in ["Pass Turn", "Save Game", "Undo Turn"]:
-            ui.def_popup("You can't do these actions during the handicap stage.", 3)
+        while event in ["Pass Turn", "Save Game", "Undo Turn", "Resume Game", "Exit To Menu"]:
+            ui.def_popup("You can't do these actions during the handicap stage.", 2)
             event, _ = self.go_board.read_window()
 
     def handle_exit_or_resume(self, event) -> None:
@@ -117,6 +117,9 @@ class Handicap():
             event, values = self.go_board.read_window()
             self.handle_special_events(event)
             self.handle_exit_or_resume(event)
+
+            if '-GRAPH-' not in values:
+                continue
 
             row, col = values['-GRAPH-']
             found_piece, piece = self.go_board.find_piece_click([row, col])

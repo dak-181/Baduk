@@ -11,6 +11,8 @@ class Player():
         self.komi: float = komi
         self.unicode: Tuple[int, int, int] = unicode_choice
         self.territory: int = 0
+        self.black_set_len: int = 0
+        self.white_set_len: int = 0
 
     @staticmethod
     def setup_player(defaults, nme, clr, uc) -> Type['Player']:

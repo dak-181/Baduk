@@ -10,9 +10,7 @@ WIN_CLOSED = None
 def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> None:
     '''
     Handles various game options based on the given event.
-    Options: Pass Turn, Quit Program, WIN_CLOSED, Save Game, Undo Turn, Exit To Menu.
-    In scoring mode "Quit Program" is shown as "Resume Game" in the UI,
-    but the event value passed here is still "Quit Program".
+    Options: Pass Turn, Save Game, Undo Turn, Resume Game, Exit To Menu.
     '''
     if event in (WIN_CLOSED, "Quit Program"):
         import pygame, sys
@@ -20,7 +18,7 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
         sys.exit()
 
     if event == "Pass Turn":
-        ui.def_popup("Skipped turn", 1)
+        ui.def_popup("Skipped turn", 2)
         board.times_passed += 1
         board.turn_num += 1
         board.position_played_log.append((text, -3, -3))
@@ -45,6 +43,9 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
         play_game_main()
         import sys; sys.exit()
 
+    elif event == "Resume Game":
+        ui.def_popup("Game is not paused, you can't resume a game that's not in scoring.", 2)
+
     else:
         raise ValueError(f"Unhandled event: {event!r}")
 
@@ -54,15 +55,21 @@ def remove_dead_turn_options(board: GoBoard, event) -> bool:
     Handles events during the dead-stone removal / scoring phase.
     Returns True only if the player clicked a board intersection.
     '''
-    if event == "Pass Turn":
-        normal_turn_options(board, event, text="Scoring Passed")
+    if event in ("Pass Turn", "Accept"):
+        board.times_passed += 1
+        board.turn_num += 1
+        board.position_played_log.append(("Scoring Passed", -3, -3))
+        board.killed_log.append([])
+        board.switch_player()
         return False
     elif event == "Save Game":
         from GoGame.saving_loading import save_pickle
         save_pickle(board)
         return False
-    elif event == "Quit Program":
-        # In scoring mode this button is labelled "Resume Game" in the UI
+    elif event == "Resume Game":
+        # restore any faded dead stones before resuming play
+        from GoGame.remove_dead import restore_all_dead
+        restore_all_dead(board)
         board.mode = "Playing"
         board.mode_change = True
         board.resuming_scoring_buffer("Resumed")

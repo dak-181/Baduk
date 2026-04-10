@@ -304,7 +304,9 @@ def popup_yes_no(msg: str, *, title: str = "", font=None) -> str:
 
 
 def popup_get_text(msg: str, *, title: str = "", font=None,
-                   default_text: str = "") -> Optional[str]:
+                   default_text: str = "",
+                   ok_label: str = "OK",
+                   cancel_label: str = "Cancel") -> Optional[str]:
     """
     Single-line text-input dialog.
     Returns the entered string, or None if the user dismissed/cancelled.
@@ -374,8 +376,8 @@ def popup_get_text(msg: str, *, title: str = "", font=None,
             pygame.draw.line(surf, _CURSOR,
                              (cx_px, inp_r.y + 6), (cx_px, inp_r.bottom - 6), 2)
 
-        _draw_button(surf, ok_r,     "OK",     ok_r.collidepoint(mx, my))
-        _draw_button(surf, cancel_r, "Cancel", cancel_r.collidepoint(mx, my))
+        _draw_button(surf, ok_r,     ok_label,     ok_r.collidepoint(mx, my))
+        _draw_button(surf, cancel_r, cancel_label, cancel_r.collidepoint(mx, my))
         pygame.display.flip()
 
         for ev in pygame.event.get():

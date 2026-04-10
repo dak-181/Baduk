@@ -11,6 +11,17 @@ _BOARD  = cf.AI_BOARD_SIZE
 _MOVES  = _BOARD * _BOARD + 1   # e.g. 362 for 19x19, 82 for 9x9
 
 
+class CancelCallback(keras.callbacks.Callback):
+    """Keras callback that stops training after each batch if state['cancelled'] is set."""
+    def __init__(self, state: dict):
+        super().__init__()
+        self.state = state
+
+    def on_batch_end(self, batch, logs=None):
+        if self.state.get("cancelled"):
+            self.model.stop_training = True
+
+
 def nn_model(board_size: int = _BOARD):
     """
     Builds the AlphaGo Zero model for the configured board size.
@@ -68,6 +79,37 @@ def nn_model_value_head(input_array):
     dense1   = keras.layers.Dense(256)(flatten)
     relu_2   = keras.layers.ReLU()(dense1)
     return keras.layers.Dense(1, activation='tanh')(relu_2)
+
+
+def training_cycle_process(length: int, log_list, game_counter):
+    """
+    Process-safe version of training_cycle. Logs to a Manager list,
+    updates game_counter, and saves results to saved_self_play.json.
+    """
+    import time
+
+    def log(msg: str):
+        print(msg)
+        log_list.append(msg)
+
+    sum_val    = 0
+    start_time = time.time()
+    nn_mod     = nn_model()
+    log(f"Starting {length} self-play games...")
+
+    for i in range(length):
+        log(f"Game {i+1}/{length} starting... (board: {_BOARD}x{_BOARD})")
+        result = nn.initializing_game(nn_mod, nn_mod, _BOARD, True)
+        if result == 1:
+            sum_val += 1
+        game_counter[0] = i + 1
+        elapsed = time.time() - start_time
+        log(f"Game {i+1}/{length} done — black wins: {sum_val}  ({elapsed:.0f}s elapsed)")
+
+    total = time.time() - start_time
+    log(f"Self-play complete: {sum_val}/{length} black wins in {total:.1f}s")
+    log("Training data saved to saved_self_play.json")
+    log("Run 'AI Training' to train the model on this data.")
 
 
 def training_cycle(length: int, state: Optional[dict] = None):
@@ -165,11 +207,11 @@ def helper_end(input_array, pop_board, board_size, board_idx):
         )
 
 
-def save_model_weights(model, filename="model_weights.h5"):
+def save_model_weights(model, filename="model.weights.h5"):
     model.save_weights(filename)
 
 
-def load_model_weights(model, filename="model_weights.h5"):
+def load_model_weights(model, filename="model.weights.h5"):
     import os
     if os.path.exists(filename):
         model.load_weights(filename)
@@ -177,8 +219,102 @@ def load_model_weights(model, filename="model_weights.h5"):
         print(f"No saved weights at '{filename}' — starting with random weights.")
 
 
+def nn_model_from_file(weights_path: str, board_size: int = _BOARD):
+    """Build the model and load weights from a specific .h5 file.
+    Unlike nn_model(), this does NOT fall back to model.weights.h5."""
+    import os
+    moves  = board_size * board_size + 1
+    shapez = (17, board_size, board_size)
+    input_layer  = keras.layers.Input(shape=shapez)
+    conv_output  = nn_model_conv_layer(input_layer)
+    res_output   = nn_model_res_layer(conv_output)
+    for _ in range(9):
+        res_output = nn_model_res_layer(res_output)
+    policy_output = nn_model_policy_head(res_output, moves)
+    value_output  = nn_model_value_head(res_output)
+    model = keras.models.Model(
+        inputs=input_layer,
+        outputs={'dense_2': value_output, 'softmax': policy_output}
+    )
+    if os.path.exists(weights_path):
+        model.load_weights(weights_path)
+        print(f"Loaded weights from '{weights_path}'")
+    else:
+        print(f"Weights file '{weights_path}' not found — using random weights.")
+    return model
+
+
+def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
+                                     state: Optional[dict] = None,
+                                     log_fn=None):
+    """
+    Trains a fresh model on saved_other_play.json (SGF-converted games)
+    and saves the result to other_play.weights.h5.
+    Deliberately does NOT load or overwrite model.weights.h5.
+    """
+    import json, random, os
+
+    def log(msg: str):
+        print(msg)
+        if log_fn is not None:
+            log_fn(msg)
+        elif state is not None:
+            state.setdefault("log", []).append(msg)
+
+    if not os.path.exists("saved_other_play.json"):
+        log("No SGF training data found. Run the SGF converter first.")
+        return
+
+    with open("saved_other_play.json", "r") as jfile:
+        dataset = json.load(jfile)
+
+    if len(dataset) < size_of_batch:
+        log(f"Not enough data ({len(dataset)} samples). Convert more SGF files.")
+        return
+
+    log(f"Loaded {len(dataset)} SGF training samples.")
+
+    # Build a fresh model — no weights loaded
+    moves  = _BOARD * _BOARD + 1
+    shapez = (17, _BOARD, _BOARD)
+    input_layer  = keras.layers.Input(shape=shapez)
+    conv_output  = nn_model_conv_layer(input_layer)
+    res_output   = nn_model_res_layer(conv_output)
+    for _ in range(9):
+        res_output = nn_model_res_layer(res_output)
+    policy_output = nn_model_policy_head(res_output, moves)
+    value_output  = nn_model_value_head(res_output)
+    model = keras.models.Model(
+        inputs=input_layer,
+        outputs={'dense_2': value_output, 'softmax': policy_output}
+    )
+
+    value_loss  = keras.losses.MeanSquaredError()
+    policy_loss = keras.losses.CategoricalCrossentropy()
+    sample_size = max(size_of_batch, len(dataset) // 4)
+
+    for epoch in range(epochs):
+        selected = random.sample(dataset, min(sample_size, len(dataset)))
+        inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
+        outputs  = {
+            'dense_2': np.array([s[2] for s in selected]),
+            'softmax': np.array([s[1] for s in selected])
+        }
+        model.compile(
+            optimizer='adam',
+            loss={'dense_2': value_loss, 'softmax': policy_loss},
+            metrics={'softmax': ['accuracy']}
+        )
+        model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
+        log(f"Epoch {epoch+1}/{epochs} complete.")
+
+    model.save_weights("other_play.weights.h5")
+    log("Weights saved to other_play.weights.h5")
+
+
 def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
                                state: Optional[dict] = None,
+                               log_fn=None,
                                run_evaluation: bool = False,
                                eval_games: int = 20):
     """
@@ -189,16 +325,18 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         epochs:         number of training epochs (default 10)
         size_of_batch:  minibatch size (default 32)
         state:          optional progress dict shared with the UI thread
+        log_fn:         optional callable for logging (used by process workers)
         run_evaluation: if True, play eval_games after training to measure
-                        improvement before saving. Off by default — only
-                        useful once you have substantial training data.
+                        improvement before saving. Off by default.
         eval_games:     number of evaluation games when run_evaluation=True
     """
     import json, random, os
 
     def log(msg: str):
         print(msg)
-        if state is not None:
+        if log_fn is not None:
+            log_fn(msg)
+        elif state is not None:
             state.setdefault("log", []).append(msg)
 
     if not os.path.exists("saved_self_play.json"):
@@ -219,9 +357,6 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
     sample_size = max(size_of_batch, len(dataset) // 4)
 
     for epoch in range(epochs):
-        if state and state.get("cancelled"):
-            log("Training cancelled by user.")
-            return
         selected = random.sample(dataset, min(sample_size, len(dataset)))
         inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
         outputs  = {
@@ -236,20 +371,13 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
         log(f"Epoch {epoch+1}/{epochs} complete.")
 
-    if state and state.get("cancelled"):
-        log("Training cancelled before saving.")
-        return
-
     # ── optional evaluation ───────────────────────────────────────────────
     if run_evaluation:
         log(f"Evaluating new model ({eval_games} games)...")
         nn_new  = model
-        nn_old  = nn_model()   # loads current saved weights as baseline
+        nn_old  = nn_model()
         sum_val = 0
         for i in range(eval_games):
-            if state and state.get("cancelled"):
-                log("Evaluation cancelled.")
-                return
             result = nn.initializing_game(nn_new, nn_old, _BOARD, True)
             if result == 1:
                 sum_val += 1
@@ -262,6 +390,5 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         else:
             log("Model did not reach 55% threshold — keeping current weights.")
     else:
-        # just save — training always improves the model when data is good
         save_model_weights(model)
-        log("Weights saved to model_weights.h5")
+        log("Weights saved to model.weights.h5")

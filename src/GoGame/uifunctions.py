@@ -36,7 +36,7 @@ WIN_H             = BOARD_H + BTN_BAR_H
 # ── colours ──────────────────────────────────────────────────────────────────
 _BOARD_BG   = (220, 179, 92)
 _SIDE_BG    = (40,   36,  30)
-_BAR_BG     = (50,   45,  38)
+_BAR_BG     = (40,   36,  30)
 _BAR_BORDER = (180, 140,  60)
 _TEXT_COL   = (235, 220, 190)
 _TEXT_DIM   = (160, 145, 115)
@@ -46,7 +46,7 @@ _BTN_TXT    = (240, 225, 180)
 _SEPARATOR  = (100,  88,  60)
 
 # ── button definitions ───────────────────────────────────────────────────────
-_BUTTONS = ["Pass Turn", "Save Game", "Undo Turn", "Quit Program", "Exit To Menu"]
+_BUTTONS = ["Pass Turn", "Undo Turn", "Resume Game", "Save Game", "Exit To Menu"]
 
 
 def _font(size: int = 16, bold: bool = False) -> pygame.font.Font:
@@ -65,8 +65,10 @@ def _ensure_pygame() -> None:
 
 def _make_window() -> pygame.Surface:
     _ensure_pygame()
-    screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
-    pygame.display.set_caption("GoGame")
+    screen = pygame.display.get_surface()
+    if screen is None or screen.get_size() != (WIN_W, WIN_H):
+        screen = pygame.display.set_mode((WIN_W, WIN_H), pygame.RESIZABLE)
+        pygame.display.set_caption("GoGame")
     return screen
 
 
@@ -92,14 +94,12 @@ def _draw_button_bar(screen: pygame.Surface,
                      mode: str = "Playing") -> None:
     bar = pygame.Rect(0, 0, WIN_W, BTN_BAR_H)
     pygame.draw.rect(screen, _BAR_BG, bar)
-    pygame.draw.line(screen, _BAR_BORDER, (0, BTN_BAR_H - 1), (WIN_W, BTN_BAR_H - 1), 1)
     mx, my  = pygame.mouse.get_pos()
     f       = _font(13, bold=True)
     for label, rect in btn_rects.items():
         disp  = label
-        # in scoring mode "Quit Program" becomes "Resume Game"
-        if label == "Quit Program" and mode == "Scoring":
-            disp = "Resume Game"
+        if label == "Pass Turn" and mode == "Scoring":
+            disp = "Accept"
         hov   = rect.collidepoint(mx, my)
         colour = _BTN_HOV if hov else _BTN_NRM
         pygame.draw.rect(screen, colour, rect, border_radius=5)
@@ -111,7 +111,6 @@ def _draw_button_bar(screen: pygame.Surface,
 def _draw_sidebar(screen: pygame.Surface, game_board) -> None:
     sx = BOARD_W
     pygame.draw.rect(screen, _SIDE_BG, pygame.Rect(sx, BTN_BAR_H, SIDE_W, BOARD_H))
-    pygame.draw.line(screen, _SEPARATOR, (sx, BTN_BAR_H), (sx, WIN_H), 1)
 
     pb = game_board.player_black
     pw = game_board.player_white
@@ -150,29 +149,34 @@ def _draw_sidebar(screen: pygame.Surface, game_board) -> None:
 def start_game_menu() -> str:
     """
     Draws the main menu and returns the chosen action string:
-      'Choose File' | 'New Game From Custom' | 'New Game From Default'
-    | 'Play Against AI' | 'AI SelfPlay' | 'AI Training' | 'Exit Game'
+      'Load Game' | 'New Custom Game' | 'New Default Game'
+    | 'Play Against AI' | 'AI SelfPlay' | 'AI Training'
+    | 'Import SGF Files' | 'Train SGF Model' | 'Exit Game'
     """
     screen = _make_window()
     clock  = pygame.time.Clock()
 
     menu_buttons = [
-        "Choose File",
-        "New Game From Custom",
-        "New Game From Default",
+        "Load Game",
+        "New Custom Game",
+        "New Default Game",
         "Play Against AI",
         "AI SelfPlay",
         "AI Training",
+        "Import SGF Files",
+        "Train SGF Model",
         "Exit Game",
     ]
 
     f_title = _font(26, bold=True)
-    f_sub   = _font(14)
     f_btn   = _font(16, bold=True)
 
     btn_w, btn_h = 280, 46
-    gap          = 12
-    start_y      = 220
+    gap          = 10
+    title_h      = 50  # space reserved for title at top
+    n            = len(menu_buttons)
+    total_btn_h  = n * btn_h + (n - 1) * gap
+    start_y      = title_h + (WIN_H - title_h - total_btn_h) // 2
 
     def _btn_rects():
         rects = {}
@@ -187,11 +191,8 @@ def start_game_menu() -> str:
         screen.fill((35, 30, 25))
 
         ts_t = f_title.render("Go Go Go", True, (220, 185, 90))
-        screen.blit(ts_t, ts_t.get_rect(centerx=WIN_W // 2, y=80))
-        ts_s = f_sub.render(
-            "9×9 default · 7.5 komi · Player 1 vs Player 2",
-            True, _TEXT_DIM)
-        screen.blit(ts_s, ts_s.get_rect(centerx=WIN_W // 2, y=140))
+        title_y = (start_y - ts_t.get_height()) // 2
+        screen.blit(ts_t, ts_t.get_rect(centerx=WIN_W // 2, y=title_y))
 
         rects = _btn_rects()
         for lbl, rect in rects.items():
@@ -210,6 +211,93 @@ def start_game_menu() -> str:
                 for lbl, rect in rects.items():
                     if rect.collidepoint(ev.pos):
                         return lbl
+        clock.tick(60)
+
+
+def pick_ai_opponent() -> Optional[str]:
+    """
+    Shows a selection screen listing all .h5 weight files in the working
+    directory, plus a 'Random Bot' option.
+
+    Returns:
+        None            — user cancelled (go back to menu)
+        'random'        — use the existing random BotBoard
+        '<filename>.h5' — full path to a weights file
+    """
+    import os
+
+    screen = pygame.display.get_surface() or _make_window()
+    clock  = pygame.time.Clock()
+
+    # Gather available .h5 files
+    try:
+        h5_files = sorted(f for f in os.listdir(".") if f.lower().endswith(".h5"))
+    except Exception:
+        h5_files = []
+
+    # Build option list: random bot first, then each weights file
+    options = ["Random Bot"] + h5_files
+
+    f_title = _font(22, bold=True)
+    f_sub   = _font(14)
+    f_btn   = _font(15, bold=True)
+    f_dim   = _font(13)
+
+    btn_w, btn_h = 340, 44
+    gap          = 10
+    start_y      = 200
+
+    def _make_rects():
+        rects = {}
+        for i, lbl in enumerate(options):
+            x = WIN_W // 2 - btn_w // 2
+            y = start_y + i * (btn_h + gap)
+            rects[lbl] = pygame.Rect(x, y, btn_w, btn_h)
+        # Back button below the list
+        back_y = start_y + len(options) * (btn_h + gap) + 10
+        rects["__ Back __"] = pygame.Rect(WIN_W // 2 - btn_w // 2, back_y, btn_w, btn_h)
+        return rects
+
+    _BG    = (35, 30, 25)
+    _GOLD  = (220, 185, 90)
+
+    while True:
+        mx, my = pygame.mouse.get_pos()
+        screen.fill(_BG)
+
+        ts_t = f_title.render("Play Against AI", True, _GOLD)
+        screen.blit(ts_t, ts_t.get_rect(centerx=WIN_W // 2, y=100))
+        ts_s = f_sub.render("Choose an opponent", True, _TEXT_DIM)
+        screen.blit(ts_s, ts_s.get_rect(centerx=WIN_W // 2, y=148))
+
+        if not h5_files:
+            ts_n = f_dim.render("(No .h5 weight files found in working directory)", True, _TEXT_DIM)
+            screen.blit(ts_n, ts_n.get_rect(centerx=WIN_W // 2, y=172))
+
+        rects = _make_rects()
+        for lbl, rect in rects.items():
+            hov  = rect.collidepoint(mx, my)
+            pygame.draw.rect(screen, _BTN_HOV if hov else _BTN_NRM, rect, border_radius=8)
+            pygame.draw.rect(screen, _BAR_BORDER, rect, width=1, border_radius=8)
+            display_lbl = "← Back" if lbl == "__ Back __" else lbl
+            ts = f_btn.render(display_lbl, True, _BTN_TXT)
+            screen.blit(ts, ts.get_rect(center=rect.center))
+
+        pygame.display.flip()
+
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                return None
+            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+                return None
+            if ev.type == pygame.MOUSEBUTTONDOWN:
+                for lbl, rect in rects.items():
+                    if rect.collidepoint(ev.pos):
+                        if lbl == "__ Back __":
+                            return None
+                        if lbl == "Random Bot":
+                            return "random"
+                        return os.path.join(os.getcwd(), lbl)
         clock.tick(60)
 
 
@@ -373,7 +461,6 @@ def setup_board_window_pygame(game_board) -> None:
     game_board.window      = None          # sentinel: no sg.Window anymore
     game_board.btn_rects   = _button_rects()
 
-    screen.fill((30, 27, 22))
     _draw_button_bar(screen, game_board.btn_rects, game_board.mode)
     _draw_sidebar(screen, game_board)
 
@@ -408,7 +495,7 @@ def update_scoring(board) -> None:
 
 def scoring_mode_popup() -> None:
     ui.popup(
-        "Click stones you believe are dead, then pass twice to finish scoring.",
+        "Click stones you believe are dead, then click Accept to finish scoring.",
         title="Scoring Mode",
     )
 
@@ -416,17 +503,76 @@ def scoring_mode_popup() -> None:
 def end_game_popup(board) -> None:
     pb = board.player_black
     pw = board.player_white
+    # Chinese rules: territory + stones on board + komi
     bs = pb.komi + pb.territory + pb.black_set_len
     ws = pw.komi + pw.territory + pw.white_set_len
     diff = bs - ws
-    winner = (f"Black wins by {diff} pts" if diff > 0 else f"White wins by {-diff} pts")
-    msg = (f"Game over!\n\n"
-           f"Black ({pb.name}):  territory {pb.territory} + "
-           f"captures {pb.black_set_len} + komi {pb.komi} = {bs}\n"
-           f"White ({pw.name}):  territory {pw.territory} + "
-           f"captures {pw.white_set_len} + komi {pw.komi} = {ws}\n\n"
-           f"{winner}")
-    ui.popup(msg, title="Game Concluded", auto_close=True, auto_close_duration=20)
+    winner = ("Black wins by {:.4g} pts".format(diff) if diff > 0
+              else "White wins by {:.4g} pts".format(-diff))
+
+    screen = pygame.display.get_surface()
+    if screen is None:
+        return
+
+    sx = BOARD_W
+    f_hdr  = _font(14, bold=True)
+    f_body = _font(13)
+    f_win  = _font(15, bold=True)
+    pad    = 12
+    x      = sx + pad
+    btn_h  = 36
+    btn_w  = SIDE_W - pad * 2
+
+    lines = [
+        (f_hdr,  "-- Game Over --",                              _BAR_BORDER),
+        (f_body, "",                                             _TEXT_COL),
+        (f_hdr,  f"Black ({pb.name})",                          _TEXT_COL),
+        (f_body, f"  territory:  {pb.territory + pb.black_set_len}", _TEXT_DIM),
+        (f_body, f"  komi:       {pb.komi}",                    _TEXT_DIM),
+        (f_hdr,  f"  total:      {bs}",                         _TEXT_COL),
+        (f_body, "",                                             _TEXT_COL),
+        (f_hdr,  f"White ({pw.name})",                          _TEXT_COL),
+        (f_body, f"  territory:  {pw.territory + pw.white_set_len}", _TEXT_DIM),
+        (f_body, f"  komi:       {pw.komi}",                    _TEXT_DIM),
+        (f_hdr,  f"  total:      {ws}",                         _TEXT_COL),
+        (f_body, "",                                             _TEXT_COL),
+        (f_win,  winner,                                         _BAR_BORDER),
+    ]
+
+    btn_r = pygame.Rect(x, 0, btn_w, btn_h)
+
+    def _draw(hov: bool) -> pygame.Rect:
+        pygame.draw.rect(screen, _SIDE_BG,
+                         pygame.Rect(sx, BTN_BAR_H, SIDE_W, BOARD_H))
+        pygame.draw.line(screen, _SEPARATOR, (sx, BTN_BAR_H), (sx, WIN_H), 1)
+        y = BTN_BAR_H + pad
+        for font, text, colour in lines:
+            ts = font.render(text, True, colour)
+            screen.blit(ts, (x, y))
+            y += font.get_linesize() + 2
+        y += 8
+        r = pygame.Rect(x, y, btn_w, btn_h)
+        colour = _BTN_HOV if hov else _BTN_NRM
+        pygame.draw.rect(screen, colour, r, border_radius=6)
+        pygame.draw.rect(screen, _BAR_BORDER, r, width=1, border_radius=6)
+        ts = f_body.render("OK", True, _BTN_TXT)
+        screen.blit(ts, ts.get_rect(center=r.center))
+        pygame.display.flip()
+        return r
+
+    clock = pygame.time.Clock()
+    closed = False
+    while not closed:
+        mx, my = pygame.mouse.get_pos()
+        btn_r = _draw(btn_r.collidepoint(mx, my))
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); import sys; sys.exit()
+            if ev.type == pygame.MOUSEBUTTONDOWN and btn_r.collidepoint(ev.pos):
+                closed = True
+            if ev.type == pygame.KEYDOWN and ev.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_ESCAPE):
+                closed = True
+        clock.tick(30)
 
 
 def default_popup_no_button(info: str, time: float) -> None:
@@ -555,7 +701,23 @@ def refresh_board_pygame(board) -> None:
         pygame.gfxdraw.aacircle(screen, mx, my, inner_r, stone_col)
         pygame.gfxdraw.filled_circle(screen, mx, my, inner_r, stone_col)
 
-    _draw_button_bar(screen, board.btn_rects, board.mode)
+    # territory overlays on live stones (shown during end-of-game scoring display)
+    t_black = getattr(board, 'territory_overlay_black', None)
+    t_white = getattr(board, 'territory_overlay_white', None)
+    if t_black or t_white:
+        for row in board.board:
+            for node in row:
+                if t_black and (node.row, node.col) in t_black:
+                    draw_stone(screen, 'territory_black', int(node.screen_row),
+                               int(node.screen_col) + BTN_BAR_H, radius)
+                elif t_white and (node.row, node.col) in t_white:
+                    draw_stone(screen, 'territory_white', int(node.screen_row),
+                               int(node.screen_col) + BTN_BAR_H, radius)
+
+    if board.mode == "Finished":
+        pygame.draw.rect(screen, _BAR_BG, pygame.Rect(0, 0, WIN_W, BTN_BAR_H))
+    else:
+        _draw_button_bar(screen, board.btn_rects, board.mode)
     _draw_sidebar(screen, board)
     pygame.display.flip()
 
@@ -576,12 +738,10 @@ def switch_button_mode(board) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def close_window(board) -> None:
-    """Release pygame display resources (called before returning to menu)."""
+    """Clear board's display references so the window can be reused by the menu."""
     try:
         del board.backup_board
     except AttributeError:
         pass
     board.screen = None
     board.window = None
-    pygame.display.quit()
-    pygame.display.init()   # keep pygame alive for the menu
