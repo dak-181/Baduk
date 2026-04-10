@@ -4,15 +4,24 @@ import sys
 from typing import Tuple, Optional, List, Set, Union, Type
 from GoGame.scoringboard import ScoringBoard
 from GoGame.goclasses import play_turn_bot_helper
+import GoGame.config as cf
+import tensorflow as tf
 
 sys.setrecursionlimit(10000)
 
-# Safety cap: if a game exceeds this many turns, force both players to pass
-# and end the game. A 9x9 game rarely exceeds 150 meaningful moves.
-MAX_TURNS = 300
+# enable GPU memory growth — prevents TF grabbing all VRAM at startup
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+    print(f"GPU enabled: {[g.name for g in gpus]}")
+
+# safety cap — 19x19 games can run longer than 9x9
+MAX_TURNS = 600
 
 
-def initializing_game(nn, nn_bad, board_size: int, defaults: Optional[bool] = True,
+def initializing_game(nn, nn_bad, board_size: int = cf.AI_BOARD_SIZE,
+                       defaults: Optional[bool] = True,
                        state: Optional[dict] = None):
     """
     Initialize and run one AI self-play game.
@@ -145,7 +154,7 @@ class NNBoard(GoBoard):
             self.turn_nnmcst = NNMCST(
                 self.board_copy, self.ai_training_info,
                 self.ai_black_board, self.ai_white_board,
-                25, (self.whose_turn, self.not_whose_turn),
+                cf.MCTS_ITERATIONS, (self.whose_turn, self.not_whose_turn),
                 chosen_nn, self.turn_num
             )
             val, output_chances, formatted_ai_training_info = self.turn_nnmcst.run_mcst()
@@ -173,8 +182,8 @@ class NNBoard(GoBoard):
     def print_board(self) -> None:
         """Prints the board to the terminal using emoji."""
         print_board = self.ai_training_info[-1]
-        for idx in range(9):
-            row = print_board[(idx * 9 + 1):(idx * 9 + 10)]
+        for idx in range(self.board_size):
+            row = print_board[(idx * self.board_size + 1):(idx * self.board_size + self.board_size + 1)]
             line = ""
             for ch in row:
                 if ch == '1':   line += '\u26AB'

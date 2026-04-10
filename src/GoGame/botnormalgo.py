@@ -4,6 +4,7 @@ from random import randrange
 from GoGame.goclasses import play_turn_bot_helper
 from typing import Union, Literal, Optional
 from GoGame.handicap import Handicap
+import time
 
 
 class BotBoard(GoBoard):
@@ -54,6 +55,7 @@ class BotBoard(GoBoard):
             if tries >= 120:
                 val = self.board_size * self.board_size
             truth_value = play_turn_bot_helper(self, truth_value, val)
+            time.sleep(.5)
             ui.refresh_board_pygame(self)
             if truth_value == "Passed":
                 return

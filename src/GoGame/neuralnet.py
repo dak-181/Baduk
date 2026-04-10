@@ -3,21 +3,28 @@ import numpy as np
 from typing import List, Optional
 import sys
 import tensorflow.keras as keras
+import GoGame.config as cf
 np.set_printoptions(threshold=sys.maxsize)
 
+# derived from config — number of board intersections + 1 pass move
+_BOARD  = cf.AI_BOARD_SIZE
+_MOVES  = _BOARD * _BOARD + 1   # e.g. 362 for 19x19, 82 for 9x9
 
-def nn_model():
+
+def nn_model(board_size: int = _BOARD):
     """
-    Builds the AlphaGo Zero model for a 9x9 board (10 residual layers).
+    Builds the AlphaGo Zero model for the configured board size.
+    Policy head outputs board_size² + 1 values (all moves + pass).
     Loads saved weights if available.
     """
-    shapez = (17, 9, 9)
-    input_layer = keras.layers.Input(shape=shapez)
-    conv_output = nn_model_conv_layer(input_layer)
-    res_output = nn_model_res_layer(conv_output)
+    moves   = board_size * board_size + 1
+    shapez  = (17, board_size, board_size)
+    input_layer  = keras.layers.Input(shape=shapez)
+    conv_output  = nn_model_conv_layer(input_layer)
+    res_output   = nn_model_res_layer(conv_output)
     for _ in range(9):
         res_output = nn_model_res_layer(res_output)
-    policy_output = nn_model_policy_head(res_output)
+    policy_output = nn_model_policy_head(res_output, moves)
     value_output  = nn_model_value_head(res_output)
     model = keras.models.Model(
         inputs=input_layer,
@@ -43,12 +50,13 @@ def nn_model_res_layer(input_array):
     return keras.layers.ReLU()(added)
 
 
-def nn_model_policy_head(input_array):
+def nn_model_policy_head(input_array, moves: int = _MOVES):
+    """Policy head: outputs softmax over all board moves + pass."""
     conv1    = keras.layers.Conv2D(2, (1, 1), strides=(1, 1), padding='same')(input_array)
     b_norm_1 = keras.layers.BatchNormalization()(conv1)
     relu_1   = keras.layers.ReLU()(b_norm_1)
     flatten  = keras.layers.Flatten()(relu_1)
-    dense    = keras.layers.Dense(82)(flatten)
+    dense    = keras.layers.Dense(moves)(flatten)
     return keras.layers.Softmax()(dense)
 
 
@@ -87,8 +95,8 @@ def training_cycle(length: int, state: Optional[dict] = None):
             log("Cancelled by user.")
             break
 
-        log(f"Game {i+1}/{length} starting...")
-        result = nn.initializing_game(nn_mod, nn_mod, 9, True)
+        log(f"Game {i+1}/{length} starting... (board: {_BOARD}x{_BOARD})")
+        result = nn.initializing_game(nn_mod, nn_mod, _BOARD, True)
         if result == 1:
             sum_val += 1
         if state is not None:
@@ -106,7 +114,7 @@ def neural_net_calcuation(input_boards: List[str], board_size: int, input_nn):
     """Runs the neural net on the given board history. Returns (value, policy)."""
     input_array = generate_17_length(input_boards, board_size)
     input_array = np.expand_dims(input_array, axis=0)
-    output       = input_nn.predict(input_array, verbose=0)
+    output        = input_nn.predict(input_array, verbose=0)
     value_output  = float(output['dense_2'][0][0])
     policy_output = output['softmax']
     return (value_output, policy_output)
@@ -157,11 +165,11 @@ def helper_end(input_array, pop_board, board_size, board_idx):
         )
 
 
-def save_model_weights(model, filename="model.weights.h5"):
+def save_model_weights(model, filename="model_weights.h5"):
     model.save_weights(filename)
 
 
-def load_model_weights(model, filename="model.weights.h5"):
+def load_model_weights(model, filename="model_weights.h5"):
     import os
     if os.path.exists(filename):
         model.load_weights(filename)
@@ -242,7 +250,7 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
             if state and state.get("cancelled"):
                 log("Evaluation cancelled.")
                 return
-            result = nn.initializing_game(nn_new, nn_old, 9, True)
+            result = nn.initializing_game(nn_new, nn_old, _BOARD, True)
             if result == 1:
                 sum_val += 1
             log(f"  Eval game {i+1}/{eval_games} — new model wins: {sum_val}")

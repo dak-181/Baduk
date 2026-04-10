@@ -8,6 +8,10 @@ from GoGame.neuralnet import neural_net_calcuation, generate_17_length
 import copy
 from numpy import argmax
 
+_BOARD = cf.AI_BOARD_SIZE
+_PASS  = _BOARD * _BOARD       # index of the pass move
+_MOVES = _BOARD * _BOARD + 1   # total moves including pass
+
 
 class NNMCSTNode(MCSTNode):
     def __init__(self, turn_person: Tuple[Player, Player], training_info: List[str], prob,
@@ -127,8 +131,8 @@ class NNMCST(MCST):
     def secondary_init(self) -> None:
         '''Helper function for init.'''
         temp_set: Set[BoardNode] = set()
-        for idx_1 in range(9):
-            for idx_2 in range(9):
+        for idx_1 in range(_BOARD):
+            for idx_2 in range(_BOARD):
                 temp_set.add(self.board[idx_1][idx_2])
         self.board_BoardString = BoardString(cf.rgb_grey, temp_set)
 
@@ -193,36 +197,38 @@ class NNMCST(MCST):
             self.backpropagate(selected_node, value_output)
         output_chances = self.get_choice_info()
         choice_weights = self.get_deep_info()
-        the_range = []
-        for idx in range(82):
-            the_range.append(idx)
-        from random import choices
+        the_range = list(range(_MOVES))
+        from random import choices, randrange
         if self.turn_num < 60:
             the_range = the_range[:-1]
             choice_weights = choice_weights[:-1]
-        location = choices(the_range, weights=choice_weights, k=1)
+        # if all weights are zero (no children explored yet), pick uniformly
+        if all(w == 0 for w in choice_weights):
+            location = [randrange(len(the_range))]
+        else:
+            location = choices(the_range, weights=choice_weights, k=1)
         return location[0], output_chances, nn_input_backup
 
     def get_choice_info(self) -> List[float]:
-        '''Returns a list representing the number of times each location was choosen by the MCST.'''
-        chance_list: List[float] = [0] * 82
+        '''Returns a list representing the number of times each location was chosen by the MCST.'''
+        chance_list: List[float] = [0] * _MOVES
         for spawn in self.root.children:
             if spawn.choice_info[0][1] != 'a':
-                location = spawn.choice_info[0][0] * 9 + spawn.choice_info[0][1]
+                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
             else:
-                location = 81
+                location = _PASS
             chance_list[location] = spawn.number_times_chosen / (self.iteration_number)
         return chance_list
 
     def get_deep_info(self) -> List[float]:
         '''Returns a list representing the deepmind value for each location on the board.'''
-        chance_list: List[float] = [0] * 82
+        chance_list: List[float] = [0] * _MOVES
         for spawn in self.root.children:
             spawn_value = self.get_deep_score(spawn)
             if spawn.choice_info[0][1] != 'a':
-                location = spawn.choice_info[0][0] * 9 + spawn.choice_info[0][1]
+                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
             else:
-                location = 81
+                location = _PASS
             chance_list[location] = spawn_value
         return chance_list
 
@@ -281,9 +287,9 @@ class NNMCST(MCST):
         policy_copy = copy.copy(policy_output)
         while not legal_move:
             move = argmax(policy_copy)
-            if move != 81:
+            if move != _PASS:
                 policy_copy[0][move] = -2
-                board_node = self.board[move // 9][move % 9]
+                board_node = self.board[move // _BOARD][move % _BOARD]
                 legal_move = self.test_piece_placement(board_node, node)
                 selected_move = board_node
             else:
@@ -359,9 +365,9 @@ class NNMCST(MCST):
 
     def child_nn_info(self, node: NNMCSTNode):
         '''Generates the value and policy for a MCSTNode.
-        Returns a tuple of a float and an array of length 82'''
+        Returns a tuple of a float and an array of length board_size²+1'''
         nn_input = self.nn_input_generation(node)
-        val_output, policy_output = neural_net_calcuation(nn_input, 9, self.neural_net_inst)
+        val_output, policy_output = neural_net_calcuation(nn_input, _BOARD, self.neural_net_inst)
         return (val_output, policy_output)
 
     def nn_input_generation(self, node: NNMCSTNode, training: bool = False) -> List[str]:
@@ -376,14 +382,14 @@ class NNMCST(MCST):
             nn_input.reverse()
             nn_input.append(self.ai_white_board)
         if training:
-            temp = generate_17_length(nn_input, 9)
+            temp = generate_17_length(nn_input, _BOARD)
             nn_input = temp.tolist()
         return nn_input
 
     def get_probabilities_for_child(self, policy_output, chosen_bnode: BoardNode) -> float:
-        '''Gets the probabilities of choosing a node from the policy_output variable (array of length 82).'''
+        '''Gets the probabilities of choosing a node from the policy_output variable.'''
         if chosen_bnode == "Pass":
-            return policy_output[0][81]
+            return policy_output[0][_PASS]
         row, col = chosen_bnode.row, chosen_bnode.col
-        policy_idx = row * 9 + col
+        policy_idx = row * _BOARD + col
         return policy_output[0][policy_idx]

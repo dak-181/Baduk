@@ -12,3 +12,10 @@ rgb_green = (50, 205, 50)
 rgb_red = (195, 33, 72)
 rgb_peach = (239, 159, 118)  # represents dead pieces
 rgb_lavender = (186, 187, 241)
+
+# ── AI configuration ─────────────────────────────────────────────────────────
+# Change these two values to adjust board size and MCTS strength.
+# AI_BOARD_SIZE: 9, 13, or 19
+# MCTS_ITERATIONS: 25 = fast/weak, 200 = good balance with GPU, 800 = strong/slow
+AI_BOARD_SIZE    = 19
+MCTS_ITERATIONS  = 100
