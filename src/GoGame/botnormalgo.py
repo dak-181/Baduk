@@ -2,55 +2,49 @@ import GoGame.uifunctions as ui
 from GoGame.goclasses import GoBoard
 from random import randrange
 from GoGame.goclasses import play_turn_bot_helper
-from typing import Union, Literal
+from typing import Union, Literal, Optional
+from GoGame.handicap import Handicap
 
 
 class BotBoard(GoBoard):
     def __init__(self, board_size=9, defaults=True):
-        """
-        Initializes a GoBoard instance with optional board size and default settings.
-
-        Parameters:
-            board_size (int): The size of the Go board (default is 9).
-            defaults (bool): A boolean indicating whether to use default settings (default is True).
-
-        Attributes:
-            defaults (bool): Indicates whether default settings are applied.
-            board_size (int): The size of the Go board.
-            board (List[List[BoardNode]]): 2D list representing the Go board with BoardNode instances.
-            times_passed (int): Number of consecutive passes in the game.
-            turn_num (int): Current turn number.
-            position_played_log (List[Union[str, Tuple[str, int, int]]]):
-                Log of played positions in the format (person who played, row, col).
-            visit_kill (Set[BoardNode]): Set of BoardNode instances representing visited and killed stones.
-            killed_last_turn (Set[BoardNode]): Set of BoardNode instances representing stones killed in the last turn.
-            killed_log (List[List[Union[Tuple[Tuple[int, int, int], int, int], List[None]]]]): Log of killed stones.
-            mode (str): Current mode of the game (e.g., "Playing", "Scoring").
-            mode_change (bool): Boolean indicating whether there was a change in the game mode.
-            handicap (Tuple[bool, str, int]): Tuple representing handicap settings, with default being False, None, and 0.
-            window (sg.Window): PySimpleGui window for the Go board.
-            screen (pygame.Surface): Pygame surface for rendering the Go board.
-            backup_board (pygame.Surface): Backup of the Pygame surface.
-            pygame_board_vals: Tuple containing Pygame board values (workable_area, distance, circle_radius).
-        """
         super().__init__(board_size, defaults)
 
     def playing_mode_end_of_game(self) -> bool:
-        "generates a score_board object, and then does automatic scoring, returning the winner as a bool. T/1 means black won."
+        "Generates a score_board object and does automatic scoring. Returns True if black won."
         from GoGame.scoringboard import making_score_board_object
         winner = making_score_board_object(self)
         return winner
 
+    def play_game_playing_mode(self, from_file, fixes_handicap) -> bool:
+        '''
+        Overrides GoBoard.play_game_playing_mode so the bot's turn_loop is used
+        instead of the human play_turn loop.
+        '''
+        if not from_file:
+            self.board = self.setup_board()
+        else:
+            ui.refresh_board_pygame(self)
+        if fixes_handicap:
+            from GoGame.handicap import Handicap
+            hc = Handicap(self)
+            self.handicap = hc.custom_handicap(False)
+        self.turn_loop()
+        self.mode = "Scoring"
+        self.times_passed = 0
+        self.resuming_scoring_buffer("Scoring")
+        return self.playing_mode_end_of_game()
+
     def turn_loop(self) -> None:
-        "Plays turns in a loop while the game is not in scoring mode."
-        while (self.times_passed <= 1):
+        "Plays turns in a loop: human plays black, bot plays white."
+        while self.times_passed <= 1:
             if self.whose_turn == self.player_black:
                 self.play_turn()
-            elif self.whose_turn == self.player_white:
+            else:
                 self.play_turn_bot()
 
     def play_turn_bot(self) -> None:
-        "Generates a random location for the bot to play, and then plays the turn."
+        "Generates a random location for the bot to play, then plays the turn."
         ui.update_scoring(self)
         truth_value: Union[bool, Literal['Passed']] = False
         tries = 0
@@ -59,10 +53,8 @@ class BotBoard(GoBoard):
             tries += 1
             if tries >= 120:
                 val = self.board_size * self.board_size
-
             truth_value = play_turn_bot_helper(self, truth_value, val)
             ui.refresh_board_pygame(self)
             if truth_value == "Passed":
                 return
         self.make_turn_info()
-        return

@@ -55,8 +55,7 @@ def remove_dead_found_piece(board: GoBoard, piece: BoardNode) -> Tuple[str, List
             item.stone_here_color = cf.rgb_lavender
     ui.refresh_board_pygame(board)
     info: str = "Other player, please click yes if you are ok with these changes"
-    #TODO fix pysimplegui
-    # other_user_agrees: str = sg.popup_yes_no(info, title="Please Click", font=('Arial Bold', 15))
+    #other_user_agrees = ui.popup_yes_no(info, title="Please Click")
     other_user_agrees = True
     return other_user_agrees, piece_string
 
