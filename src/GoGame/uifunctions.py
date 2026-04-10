@@ -24,6 +24,7 @@ import pygame
 from typing import Tuple, List, Optional
 import GoGame.config as cf
 import GoGame.pygame_ui as ui
+import pygame.gfxdraw
 
 # ── window dimensions ────────────────────────────────────────────────────────
 BOARD_W, BOARD_H = 700, 700
@@ -359,6 +360,9 @@ def setup_board_window_pygame(game_board) -> None:
     Stores screen + button_rects on game_board so the game loop can use them.
     (No return value — replaces the old sg.Window return.)
     """
+    from GoGame.stone_renderer import clear_cache
+    clear_cache()
+
     _ensure_pygame()
     screen = pygame.display.get_surface()
     if screen is None or screen.get_size() != (WIN_W, WIN_H):
@@ -446,11 +450,11 @@ def draw_gameboard(game_board, surface: Optional[pygame.Surface] = None) -> None
         return
     workable_area = 620
     distance      = workable_area / (game_board.board_size - 1)
-    circle_radius = distance / 3
+    circle_radius = distance / 2.1
     game_board.pygame_board_vals = (workable_area, distance, circle_radius)
     surface.fill(_BOARD_BG)
     draw_lines(game_board, distance, surface)
-    stars_pygame(game_board, surface, circle_radius)
+    stars_pygame(game_board, surface, max(2, int(distance * 0.06)))
     draw_coordinates(game_board, surface)
 
 
@@ -467,7 +471,7 @@ def draw_lines(game_board, distance: float, surface: pygame.Surface) -> None:
                                  (x_val, y_val - distance), (x_val, y_val))
 
 
-def stars_pygame(board, surface: pygame.Surface, circle_radius: float) -> None:
+def stars_pygame(board, surface, circle_radius):
     size = board.board_size
     if size == 9:
         pts = [(2, 2), (size-3, 2), (size-3, size-3), (2, size-3)]
@@ -475,8 +479,12 @@ def stars_pygame(board, surface: pygame.Surface, circle_radius: float) -> None:
         pts = [(3, 3), (size-4, 3), (size-4, size-4), (3, size-4)]
     for r, c in pts:
         node = board.board[r][c]
-        pygame.draw.circle(surface, (0, 0, 0),
-                           (node.screen_row, node.screen_col), circle_radius * 0.3)
+        x = int(node.screen_row)
+        y = int(node.screen_col)
+        r_int = int(circle_radius)
+        pygame.gfxdraw.aacircle(surface, x, y, r_int, (0, 0, 0))
+        pygame.gfxdraw.filled_circle(surface, x, y, r_int, (0, 0, 0))
+    
         
 
 def draw_coordinates(game_board, surface: pygame.Surface) -> None:
@@ -506,38 +514,50 @@ def draw_coordinates(game_board, surface: pygame.Surface) -> None:
 
 def refresh_board_pygame(board) -> None:
     """Redraw stones on top of the background board surface, then flip."""
+    from GoGame.stone_renderer import draw_stone
+
     screen = board.screen
     if screen is None:
         return
 
-    # blit the clean board background into the board area
     screen.blit(board.backup_board, (0, BTN_BAR_H))
+    radius = int(board.pygame_board_vals[1] / 2.1) * 2
 
     for row in board.board:
         for node in row:
-            c = node.stone_here_color
-            if c in (cf.rgb_black, cf.rgb_white,
-                     cf.rgb_lavender, cf.rgb_peach,
-                     cf.rgb_green, cf.rgb_red):
-                # offset y by BTN_BAR_H so stones sit in the board area
-                pygame.draw.circle(
-                    screen, c,
-                    (int(node.screen_row), int(node.screen_col) + BTN_BAR_H),
-                    int(board.pygame_board_vals[2])
-                )
+            c  = node.stone_here_color
+            sx = int(node.screen_row)
+            sy = int(node.screen_col) + BTN_BAR_H
+
+            if c == cf.rgb_black:
+                draw_stone(screen, 'black', sx, sy, radius)
+            elif c == cf.rgb_white:
+                draw_stone(screen, 'white', sx, sy, radius)
+            elif c == cf.rgb_peach:
+                draw_stone(screen, 'black', sx, sy, radius, alpha=128)
+            elif c == cf.rgb_lavender:
+                draw_stone(screen, 'white', sx, sy, radius, alpha=128)
+            elif c == cf.rgb_green:
+                draw_stone(screen, 'territory_black', sx, sy, radius)
+            elif c == cf.rgb_red:
+                draw_stone(screen, 'territory_white', sx, sy, radius)
+
+    # last-move marker
+    last = getattr(board, 'last_move', None)
+    if last is not None and last.stone_here_color in (cf.rgb_black, cf.rgb_white):
+        marker_color = (255, 255, 255) if last.stone_here_color == cf.rgb_black else (0, 0, 0)
+        stone_col    = (15, 15, 18) if last.stone_here_color == cf.rgb_black else (238, 235, 228)
+        ring_r  = max(2, int(board.pygame_board_vals[1] * 0.18))
+        inner_r = max(1, int(ring_r * 0.75))
+        mx = int(last.screen_row)
+        my = int(last.screen_col) + BTN_BAR_H
+        pygame.gfxdraw.aacircle(screen, mx, my, ring_r, marker_color)
+        pygame.gfxdraw.filled_circle(screen, mx, my, ring_r, marker_color)
+        pygame.gfxdraw.aacircle(screen, mx, my, inner_r, stone_col)
+        pygame.gfxdraw.filled_circle(screen, mx, my, inner_r, stone_col)
 
     _draw_button_bar(screen, board.btn_rects, board.mode)
     _draw_sidebar(screen, board)
-    # draw last-move marker
-    last = getattr(board, 'last_move', None)
-    if last is not None:
-        marker_color = (255, 255, 255) if last.stone_here_color == cf.rgb_black else (0, 0, 0)
-        marker_radius = max(2, int(board.pygame_board_vals[2] * 0.35))
-        pygame.draw.circle(
-            screen, marker_color,
-            (int(last.screen_row), int(last.screen_col) + BTN_BAR_H),
-            marker_radius
-        )
     pygame.display.flip()
 
 
