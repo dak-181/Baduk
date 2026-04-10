@@ -144,6 +144,7 @@ class GoBoard():
 
         # Mode and handicap attributes
         self.mode, self.mode_change = "Playing", True
+        self.last_move = None
         self.handicap: Tuple[bool, str, int] = Handicap.default_handicap()
 
         # pygame and pySimpleGui attributes
@@ -319,9 +320,10 @@ class GoBoard():
             if self.mode_change:
                 ui.switch_button_mode(self)
             while self.mode == "Scoring":
-                from GoGame.remove_dead import remove_dead
+                from GoGame.remove_dead import remove_dead, finalize_dead_stones
                 remove_dead(self)
                 if self.times_passed == 2:
+                    finalize_dead_stones(self)
                     self.mode = "Finished"
 
             while (self.times_passed <= 1):
@@ -581,3 +583,4 @@ def piece_placement(self, piece: BoardNode, row: int, col: int) -> None:
     piece.stone_here_color = self.whose_turn.unicode
     self.turn_num += 1
     self.position_played_log.append((self.whose_turn.color, row, col))
+    self.last_move = piece

@@ -528,6 +528,16 @@ def refresh_board_pygame(board) -> None:
 
     _draw_button_bar(screen, board.btn_rects, board.mode)
     _draw_sidebar(screen, board)
+    # draw last-move marker
+    last = getattr(board, 'last_move', None)
+    if last is not None:
+        marker_color = (255, 255, 255) if last.stone_here_color == cf.rgb_black else (0, 0, 0)
+        marker_radius = max(2, int(board.pygame_board_vals[2] * 0.35))
+        pygame.draw.circle(
+            screen, marker_color,
+            (int(last.screen_row), int(last.screen_col) + BTN_BAR_H),
+            marker_radius
+        )
     pygame.display.flip()
 
 
