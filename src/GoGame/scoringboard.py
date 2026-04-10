@@ -13,7 +13,7 @@ def making_score_board_object(board: GoBoard) -> bool:
     import platform
     board.scoring_dead = ScoringBoard(board)
     if platform.system() == "Linux":
-        board.window.close()
+        ui.close_window(board)
         ui.setup_board_window_pygame(board.scoring_dead)
         ui.refresh_board_pygame(board.scoring_dead)
         winner = board.scoring_dead.dealing_with_dead_stones()

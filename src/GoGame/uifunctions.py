@@ -185,7 +185,7 @@ def start_game_menu() -> str:
         mx, my = pygame.mouse.get_pos()
         screen.fill((35, 30, 25))
 
-        ts_t = f_title.render("Evan's Go Game", True, (220, 185, 90))
+        ts_t = f_title.render("Go Go Go", True, (220, 185, 90))
         screen.blit(ts_t, ts_t.get_rect(centerx=WIN_W // 2, y=80))
         ts_s = f_sub.render(
             "9×9 default · 7.5 komi · Player 1 vs Player 2",

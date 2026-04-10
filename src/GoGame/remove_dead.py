@@ -1,6 +1,5 @@
 from GoGame.goclasses import GoBoard, BoardNode
 import GoGame.uifunctions as ui
-import PySimpleGUI as sg
 from typing import Tuple, List, Set
 import GoGame.config as cf
 
@@ -56,7 +55,9 @@ def remove_dead_found_piece(board: GoBoard, piece: BoardNode) -> Tuple[str, List
             item.stone_here_color = cf.rgb_lavender
     ui.refresh_board_pygame(board)
     info: str = "Other player, please click yes if you are ok with these changes"
-    other_user_agrees: str = sg.popup_yes_no(info, title="Please Click", font=('Arial Bold', 15))
+    #TODO fix pysimplegui
+    # other_user_agrees: str = sg.popup_yes_no(info, title="Please Click", font=('Arial Bold', 15))
+    other_user_agrees = True
     return other_user_agrees, piece_string
 
 

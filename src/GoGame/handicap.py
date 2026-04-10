@@ -1,5 +1,4 @@
 import GoGame.uifunctions as ui
-import PySimpleGUI as sg
 import pygame
 import GoGame.config as cf
 from typing import Tuple, List
@@ -47,10 +46,9 @@ class Handicap():
         if not actual_handicap:
             return ("No", [], False, -1)
         info: str = "Please Click Yes if you want choose where you play your handicap."
-        manual_handicap: str = sg.popup_yes_no(info, title="Please Click", font=('Arial Bold', 15))
         chosen_list: list = self.choose_handicap_list()
         handicap_value: int = ui.handicap_number_gui(self.go_board.board_size)
-        return manual_handicap, chosen_list, actual_handicap, handicap_value
+        return handicap_value, chosen_list, actual_handicap, handicap_value
 
     def manual_handicap_placement(self, handicap_info: int) -> None:
         '''Allows the player to choose where to place their handicap pieces.'''
