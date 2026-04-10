@@ -20,7 +20,7 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
         sys.exit()
 
     if event == "Pass Turn":
-        ui.def_popup("Skipped turn", 0.5)
+        ui.def_popup("Skipped turn", 1)
         board.times_passed += 1
         board.turn_num += 1
         board.position_played_log.append((text, -3, -3))

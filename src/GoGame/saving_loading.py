@@ -7,11 +7,13 @@ import GoGame.pygame_ui as pg_ui
 def move_to_pkl_directory() -> str:
     "Moves into the pklfiles subdirectory. Returns the full path."
     from os import chdir, getcwd, path, makedirs
+    import re
     wd = getcwd()
-    full_path = path.join(wd, 'pklfiles')
+    # strip any trailing pklfiles segments to always resolve from project root
+    base = re.sub(r'[/\\]pklfiles$', '', wd)
+    full_path = path.join(base, 'pklfiles')
     makedirs(full_path, exist_ok=True)
-    if not wd.endswith('pklfiles'):
-        chdir(full_path)
+    chdir(full_path)
     return full_path
 
 
@@ -24,11 +26,13 @@ def save_pickle(board: GoBoard) -> None:
 
     # temporarily remove unpicklable pygame objects
     backup_screen       = board.screen
-    backup_backup_board = board.backup_board
+    backup_backup_board = getattr(board, 'backup_board', None)
     backup_btn_rects    = getattr(board, 'btn_rects', None)
     board.screen        = None
     board.backup_board  = None
     board.btn_rects     = None
+    if hasattr(board, 'scoring_dead'):
+        del board.scoring_dead
 
     with open(filename, "wb") as pkl_file:
         pickle.dump(board, pkl_file)

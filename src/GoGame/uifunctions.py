@@ -410,7 +410,6 @@ def scoring_mode_popup() -> None:
     ui.popup(
         "Click stones you believe are dead, then pass twice to finish scoring.",
         title="Scoring Mode",
-        auto_close=True, auto_close_duration=3
     )
 
 
@@ -435,7 +434,7 @@ def default_popup_no_button(info: str, time: float) -> None:
 
 
 def def_popup(info: str, time: float) -> None:
-    ui.popup(info, auto_close=True, auto_close_duration=time)
+    ui.popup_no_buttons(info, auto_close_duration=time)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

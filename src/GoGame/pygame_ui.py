@@ -129,7 +129,7 @@ def _pump_and_wait_close(timeout_ms: Optional[int] = None) -> None:
 #  PUBLIC API
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def popup(msg: str, *, title: str = "", auto_close: bool = True,
+def popup(msg: str, *, title: str = "", auto_close: bool = False,
           auto_close_duration: float = 3, line_width: int = 42,
           non_blocking: bool = False, font=None) -> None:
     """Show an info popup with an OK button (or auto-close)."""
@@ -202,9 +202,47 @@ def popup(msg: str, *, title: str = "", auto_close: bool = True,
 def popup_no_buttons(msg: str, *, title: str = "", auto_close: bool = True,
                      auto_close_duration: float = 3, non_blocking: bool = True,
                      font=None) -> None:
-    """Auto-closing info message with no buttons."""
-    popup(msg, title=title, auto_close=True,
-          auto_close_duration=auto_close_duration, non_blocking=non_blocking)
+    """Auto-closing info message with no buttons. Blocks for auto_close_duration seconds."""
+    import time
+
+    surf     = _get_display()
+    snapshot = surf.copy()
+
+    panel_w  = 480
+    f_body   = _font(16)
+    f_title  = _font(15, bold=True)
+    pad      = 20
+
+    wrapped  = _wrap_text(msg, f_body, panel_w - pad * 2)
+    text_h   = len(wrapped) * (f_body.get_linesize() + 2)
+    title_h  = (f_title.get_linesize() + 12) if title else 0
+    panel_h  = pad + title_h + text_h + pad
+
+    cx, cy   = surf.get_width() // 2, surf.get_height() // 2
+    panel_r  = pygame.Rect(cx - panel_w // 2, cy - panel_h // 2, panel_w, panel_h)
+
+    def _draw() -> None:
+        surf.blit(snapshot, (0, 0))
+        _overlay(surf)
+        _draw_panel(surf, panel_r, title)
+        ty = panel_r.y + pad + title_h
+        for line in wrapped:
+            ts = f_body.render(line, True, _TEXT)
+            surf.blit(ts, (panel_r.x + pad, ty))
+            ty += f_body.get_linesize() + 2
+        pygame.display.flip()
+
+    deadline = time.time() + auto_close_duration
+    clock    = pygame.time.Clock()
+    while time.time() < deadline:
+        _draw()
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+        clock.tick(30)
+
+    surf.blit(snapshot, (0, 0))
+    pygame.display.flip()
 
 
 def popup_yes_no(msg: str, *, title: str = "", font=None) -> str:

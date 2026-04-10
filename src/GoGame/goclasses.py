@@ -346,7 +346,6 @@ class GoBoard():
     def end_of_game(self) -> None:
         '''Handles the end of the game, i.e. displaying the winner, saving the game state, and returning to the main menu.'''
         ui.end_game_popup(self)
-        ui.default_popup_no_button("Please save to a file, thank you.", 3)
         from GoGame.saving_loading import save_pickle
         save_pickle(self)
 
