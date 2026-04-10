@@ -451,6 +451,7 @@ def draw_gameboard(game_board, surface: Optional[pygame.Surface] = None) -> None
     surface.fill(_BOARD_BG)
     draw_lines(game_board, distance, surface)
     stars_pygame(game_board, surface, circle_radius)
+    draw_coordinates(game_board, surface)
 
 
 def draw_lines(game_board, distance: float, surface: pygame.Surface) -> None:
@@ -474,8 +475,29 @@ def stars_pygame(board, surface: pygame.Surface, circle_radius: float) -> None:
         pts = [(3, 3), (size-4, 3), (size-4, size-4), (3, size-4)]
     for r, c in pts:
         node = board.board[r][c]
-        pygame.draw.circle(surface, (255, 165, 0),
-                           (node.screen_row, node.screen_col), circle_radius)
+        pygame.draw.circle(surface, (0, 0, 0),
+                           (node.screen_row, node.screen_col), circle_radius * 0.3)
+        
+
+def draw_coordinates(game_board, surface: pygame.Surface) -> None:
+    """Draw A-T column labels and 1-19 row numbers around the board."""
+    f = _font(11)
+    size = game_board.board_size
+    distance = game_board.pygame_board_vals[1]
+    cols = "ABCDEFGHJKLMNOPQRST"  # no 'I', standard Go notation
+
+    for i in range(size):
+        val = 40 + i * distance
+
+        # column letters — top and bottom
+        lbl = f.render(cols[i], True, (0, 0, 0))
+        surface.blit(lbl, lbl.get_rect(centerx=val, centery=18))
+        surface.blit(lbl, lbl.get_rect(centerx=val, centery=682))
+
+        # row numbers — left and right (1 at bottom, n at top)
+        num = f.render(str(size - i), True, (0, 0, 0))
+        surface.blit(num, num.get_rect(centerx=18, centery=val))
+        surface.blit(num, num.get_rect(centerx=682, centery=val))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
