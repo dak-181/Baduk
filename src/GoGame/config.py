@@ -12,5 +12,5 @@ rgb_lavender = (186, 187, 241)
 # AI_BOARD_SIZE: 9, 13, or 19
 # MCTS_ITERATIONS: 25 = fast/weak, 200 = good balance with GPU, 800 = strong/slow
 AI_BOARD_SIZE        = 19
-MCTS_ITERATIONS      = 2 # used during self-play training
+MCTS_ITERATIONS      = 200 # used during self-play training
 PLAY_MCTS_ITERATIONS = 25   # used when playing against a human
