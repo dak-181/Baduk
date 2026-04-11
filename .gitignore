@@ -2,4 +2,5 @@
 *.json
 *.sgf
 *.pkl
+*.bak
 __pycache__

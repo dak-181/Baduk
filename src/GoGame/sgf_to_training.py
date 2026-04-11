@@ -219,7 +219,10 @@ HISTORY_DEPTH = 17   # number of board states kept in training info (mirrors sel
 def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
     """
     Parse one SGF string and return a list of training samples.
-    Each sample: (board_state_list, policy_vector, winner_value)
+    Each sample: (board_state_list, policy_vector, value)
+
+    value is +1.0 if the player to move at that board state won the game,
+    -1.0 if they lost — matching the AlphaGo Zero convention.
 
     Returns [] if the game has no winner, is not 19x19, or has no moves.
     """
@@ -261,7 +264,19 @@ def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
         board_state_list = _build_17_plane_input(recent_history, BOARD_SIZE)
         policy_vector    = _one_hot_policy(move_rc, BOARD_SIZE)
 
-        samples.append((board_state_list, policy_vector, winner))
+        # AlphaGo Zero convention: value target = +1 if the player TO MOVE won,
+        # -1 if the player to move lost.
+        # winner is +1.0 (black won) or -1.0 (white won).
+        # turn_num is 1 (black to move) or 2 (white to move).
+        # If black won  and black is moving → +1.0  (mover wins)
+        # If black won  and white is moving → -1.0  (mover loses)
+        # If white won  and white is moving → +1.0  (mover wins)
+        # If white won  and black is moving → -1.0  (mover loses)
+        black_won    = (winner == 1.0)
+        black_moving = (turn_num == 1)
+        perspective  = 1.0 if (black_won == black_moving) else -1.0
+
+        samples.append((board_state_list, policy_vector, perspective))
 
         if move_rc is not None:
             board.place(move_rc[0], move_rc[1], color)

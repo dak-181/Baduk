@@ -306,6 +306,23 @@ class GoBoard():
     def play_game_view_endgame(self) -> None:
         '''Renders the final board position, shows the score breakdown, then returns to menu.
         end_game_popup has its own OK button event loop so the board stays visible until dismissed.'''
+        # Rebuild the territory overlay frozensets from the board node colours.
+        # These are set on the ScoringBoard during counting_territory() but are never
+        # copied back to GoBoard, so they are absent after loading a saved finished game.
+        # rgb_black/rgb_white nodes are live stones; rgb_green/rgb_red are territory markers
+        # already stored in node colours from the original scoring run.
+        if not hasattr(self, 'territory_overlay_black') or self.territory_overlay_black is None:
+            self.territory_overlay_black = frozenset(
+                (node.row, node.col)
+                for row in self.board for node in row
+                if node.stone_here_color == cf.rgb_black
+            )
+        if not hasattr(self, 'territory_overlay_white') or self.territory_overlay_white is None:
+            self.territory_overlay_white = frozenset(
+                (node.row, node.col)
+                for row in self.board for node in row
+                if node.stone_here_color == cf.rgb_white
+            )
         ui.refresh_board_pygame(self)
         ui.end_game_popup(self)
         from GoGame.main import play_game_main
@@ -490,17 +507,28 @@ class GoBoard():
 
 
 def self_death_rule(self, piece: BoardNode, which_player: Type['Player'], visited: Set[BoardNode]) -> int:
-    '''Uses recursive BFS to find liberties and connected pieces of the same type, returns the number of liberties'''
-    visited.add(piece)
-    neighboring_piece: Set[BoardNode] = piece.connections
+    '''
+    Iterative flood fill that counts liberties for a group of stones belonging to which_player.
+    Populates self.visit_kill with every stone in the group so remove_stones() can clear them.
+    Returns the number of liberties (0 means the group is captured / self-dead).
+    '''
     liberties: int = 0
-    for neighbor in neighboring_piece:
-        if neighbor.stone_here_color == cf.rgb_grey and neighbor not in visited:
-            liberties += 1
-        elif neighbor.stone_here_color != which_player.unicode:
-            pass
-        elif neighbor not in visited:
-            liberties += self_death_rule(self, neighbor, which_player, visited)
+    counted_liberties: Set[BoardNode] = set()  # avoid double-counting shared liberties
+    stack = [piece]
+
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+
+        for neighbor in current.connections:
+            if neighbor.stone_here_color == cf.rgb_grey and neighbor not in counted_liberties:
+                liberties += 1
+                counted_liberties.add(neighbor)
+            elif neighbor.stone_here_color == which_player.unicode and neighbor not in visited:
+                stack.append(neighbor)
+
     self.visit_kill = visited
     return liberties
 

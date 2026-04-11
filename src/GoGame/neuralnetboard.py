@@ -97,7 +97,19 @@ class NNBoard(GoBoard):
         except FileNotFoundError:
             existing_data = []
 
-        new_data = [(item[0], item[1], winner) for item in self.ai_output_info]
+        def perspective_value(winner: int, turn_color: int) -> float:
+            """Return +1.0 if the player to move won, -1.0 if they lost.
+            winner:     1 = black won, 0 = white won
+            turn_color: 1 = black to move, 2 = white to move
+            """
+            black_won = (winner == 1)
+            black_to_move = (turn_color == 1)
+            return 1.0 if (black_won == black_to_move) else -1.0
+
+        new_data = [
+            (item[0], item[1], perspective_value(int(winner), item[2]))
+            for item in self.ai_output_info
+        ]
         with open(file_name, "w") as fn2:
             json.dump(existing_data + new_data, fn2)
 
@@ -156,7 +168,10 @@ class NNBoard(GoBoard):
                 chosen_nn, self.turn_num
             )
             val, output_chances, formatted_ai_training_info = self.turn_nnmcst.run_mcst()
-            self.ai_output_info.append((formatted_ai_training_info, output_chances))
+            # record whose turn it is NOW (before play_turn_bot_helper switches it)
+            # so playing_mode_end_of_game can flip the value target by perspective
+            turn_color = 1 if self.whose_turn == self.player_black else 2
+            self.ai_output_info.append((formatted_ai_training_info, output_chances, turn_color))
 
             t1 = time.time()
             print(f"  t={t1-t0:.2f}s  val={val}  pos={val//9},{val%9}  turn={self.turn_num}")
