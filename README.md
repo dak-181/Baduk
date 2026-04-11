@@ -1,4 +1,4 @@
-# GoGame — Python Go / Baduk
+# Go Go Go
 
 A Python implementation of the board game Go (Baduk/Weiqi) with a pygame GUI, a random bot opponent, and an AlphaGo Zero-style neural network AI that can be trained via self-play or imported SGF game records.
 
@@ -9,14 +9,18 @@ Originally forked from [EGPeat/GoGame](https://github.com/EGPeat/GoGame) and mod
 ## Requirements
 
 - Python 3.12
-- pygame 2.6
-- TensorFlow 2.16 / Keras (GPU recommended — tested on RTX 3090 Ti via WSL2 + CUDA 12.3)
+- pygame
 - numpy
+- TensorFlow
+- Keras 
+- CUDA
+
+GPU recommended — tested on RTX 3090 Ti via WSL2 + CUDA 12.3 and TensorFlow 2.16. You should configure the proper version of CUDA and TensorFlow for your GPU
 
 Install dependencies:
 
 ```bash
-pip install pygame tensorflow numpy
+pip install -r requirements.txt
 ```
 
 ---

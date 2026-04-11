@@ -1,13 +1,8 @@
-# GoGame – modernised dependencies
-# Tested on Python 3.11 / 3.12
+# Core dependencies
+pygame>=2.6.0
+tensorflow>=2.16.0  # includes Keras and GPU support — no separate keras or tensorflow-gpu needed
+numpy>=1.26.0
 
-pygame>=2.5.0
-numpy>=1.24.0
-
-# TensorFlow / Keras (only needed for the AI training features)
-# Comment these out if you just want to play hotseat without the AI
-tensorflow>=2.13.0
-keras>=2.13.0
-
-# Packaging
-pyinstaller>=6.3.0
+# GPU acceleration (recommended)
+# CUDA 12.3+ and cuDNN must be installed at the system level separately.
+# TensorFlow 2.16+ will automatically use the GPU if CUDA is present.
