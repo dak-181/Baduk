@@ -182,11 +182,13 @@ def _build_17_plane_input(history: List[str], board_size: int) -> List[float]:
         if len(history) == 0:
             set_end(board_idx)
         elif color_turn == 1:
-            set_black(board_idx);     board_idx += 1
-            set_white(board_idx);     board_idx += 1
+            if board_idx < 16:
+                set_black(board_idx);     board_idx += 1
+                set_white(board_idx);     board_idx += 1
         else:
-            set_white(board_idx);     board_idx += 1
-            set_black(board_idx);     board_idx += 1
+            if board_idx < 16:
+                set_white(board_idx);     board_idx += 1
+                set_black(board_idx);     board_idx += 1
 
     # flatten to list (matches what json.dump produces from np arrays)
     flat = []

@@ -296,6 +296,8 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
     for epoch in range(epochs):
         selected = random.sample(dataset, min(sample_size, len(dataset)))
         inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
+        if inputs.ndim == 2:
+            inputs = inputs.reshape(-1, 17, _BOARD, _BOARD)
         outputs  = {
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
@@ -359,6 +361,8 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
     for epoch in range(epochs):
         selected = random.sample(dataset, min(sample_size, len(dataset)))
         inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
+        if inputs.ndim == 2:
+            inputs = inputs.reshape(-1, 17, _BOARD, _BOARD)
         outputs  = {
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
