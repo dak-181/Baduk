@@ -173,12 +173,15 @@ class GoBoard():
         board_string: str = '1' if self.whose_turn == self.player_black else '2'
         for xidx in range(len(self.board)):
             for yidx in range(len(self.board)):
-                if self.board[xidx][yidx].stone_here_color == cf.rgb_grey:
+                c = self.board[xidx][yidx].stone_here_color
+                if c == cf.rgb_grey:
                     board_string += "0"
-                elif self.board[xidx][yidx].stone_here_color == cf.rgb_black:
+                elif c in (cf.rgb_black, cf.rgb_peach):
                     board_string += '1'
-                elif self.board[xidx][yidx].stone_here_color == cf.rgb_white:
+                elif c in (cf.rgb_white, cf.rgb_lavender):
                     board_string += '2'
+                else:
+                    board_string += "0"
         return board_string
 
     def setup_board(self) -> List[List[BoardNode]]:
@@ -226,7 +229,8 @@ class GoBoard():
                     mx, my = ev.pos
 
                     # check button bar first
-                    for label, rect in self.btn_rects.items():
+                    btn_rects = getattr(self, 'btn_rects', None) or {}
+                    for label, rect in btn_rects.items():
                         if rect.collidepoint(mx, my):
                             return label, {}
 
@@ -300,14 +304,14 @@ class GoBoard():
         return self.scoring_block()
 
     def play_game_view_endgame(self) -> None:
-        '''Allows the user to view a completed game'''
+        '''Renders the final board position, shows the score breakdown, then returns to menu.
+        end_game_popup has its own OK button event loop so the board stays visible until dismissed.'''
         ui.refresh_board_pygame(self)
-        event, _ = self.read_window()
-        if event in ("Exit To Menu", None):
-            from GoGame.main import play_game_main
-            ui.close_window(self)
-            play_game_main()
-            quit()
+        ui.end_game_popup(self)
+        from GoGame.main import play_game_main
+        ui.close_window(self)
+        play_game_main()
+        quit()
 
     def scoring_block(self) -> bool:
         '''

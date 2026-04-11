@@ -5,15 +5,14 @@ import GoGame.pygame_ui as pg_ui
 
 
 def move_to_pkl_directory() -> str:
-    "Moves into the pklfiles subdirectory. Returns the full path."
-    from os import chdir, getcwd, path, makedirs
+    "Returns the absolute path to the pklfiles subdirectory, creating it if needed. Does NOT chdir."
+    from os import getcwd, path, makedirs
     import re
     wd = getcwd()
     # strip any trailing pklfiles segments to always resolve from project root
     base = re.sub(r'[/\\]pklfiles$', '', wd)
     full_path = path.join(base, 'pklfiles')
     makedirs(full_path, exist_ok=True)
-    chdir(full_path)
     return full_path
 
 
@@ -75,9 +74,10 @@ def load_pkl(input_path: str) -> GoBoard:
 def choose_file() -> None:
     "Let the user pick a .pkl save file and resume that game."
     from GoGame.uifunctions import setup_board_window_pygame, default_popup_no_button
-    move_to_pkl_directory()
+    pkl_dir = move_to_pkl_directory()
 
-    file_path = pg_ui.popup_get_file("Select a save file", title="Load Game")
+    file_path = pg_ui.popup_get_file("Select a save file", title="Load Game",
+                                     initial_folder=pkl_dir)
     if not file_path:
         return
 

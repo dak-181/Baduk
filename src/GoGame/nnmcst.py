@@ -15,7 +15,7 @@ _MOVES = _BOARD * _BOARD + 1   # total moves including pass
 
 class NNMCSTNode(MCSTNode):
     def __init__(self, turn_person: Tuple[Player, Player], training_info: List[str], prob,
-                 board_list=None, killed_last: Union[Set[None], Set[BoardNode]] = set(),
+                 board_list=None, killed_last: Union[Set[None], Set[BoardNode]] = None,
                  placement_location: Tuple[Union[str, Tuple[int, int]], int, Tuple[int, int, int]] = ((-1, -1), -1, -1),
                  parent: Union[None, Type['NNMCSTNode']] = None) -> None:
         """
@@ -65,7 +65,7 @@ class NNMCSTNode(MCSTNode):
         self.mean_value_v: float = 0
         self.ai_training_info_node = training_info
 
-        self.killed_last_turn: Union[Set[None], Set[BoardNode]] = killed_last
+        self.killed_last_turn: Union[Set[None], Set[BoardNode]] = killed_last if killed_last is not None else set()
         self.child_killed_last: Union[Set[BoardNode], Set[None]] = set()
         self.visit_kill: Set[BoardNode] = set()
         self.whose_turn: Player = turn_person[0]
@@ -173,6 +173,8 @@ class NNMCST(MCST):
         for sibling in t_node.children:
             lower_value += math.pow(sibling.number_times_chosen, (1 / self.temp))
 
+        if lower_value == 0:
+            return 0.0
         upper_value = math.pow(child.number_times_chosen, (1 / self.temp))
         return (upper_value / lower_value)
 
@@ -228,10 +230,10 @@ class NNMCST(MCST):
         '''Returns a list representing the number of times each location was chosen by the MCST.'''
         chance_list: List[float] = [0] * _MOVES
         for spawn in self.root.children:
-            if spawn.choice_info[0][1] != 'a':
-                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
-            else:
+            if spawn.choice_info[0] == "Pass":
                 location = _PASS
+            else:
+                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
             chance_list[location] = spawn.number_times_chosen / (self.iteration_number)
         return chance_list
 
@@ -240,27 +242,35 @@ class NNMCST(MCST):
         chance_list: List[float] = [0] * _MOVES
         for spawn in self.root.children:
             spawn_value = self.get_deep_score(spawn)
-            if spawn.choice_info[0][1] != 'a':
-                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
-            else:
+            if spawn.choice_info[0] == "Pass":
                 location = _PASS
+            else:
+                location = spawn.choice_info[0][0] * _BOARD + spawn.choice_info[0][1]
             chance_list[location] = spawn_value
         return chance_list
 
     def select(self, node: NNMCSTNode, idx: int) -> NNMCSTNode:
-        '''Selects a node for expansion, as well as generates child nodes, when necessary.'''
-        if self.is_winning_state(node):
-            return node
-        if not node.children:
-            self.load_board_string(node)
-            legal_moves = self.generate_moves(node)
-            _, policy_output = self.child_nn_info(node)
-            for move in legal_moves:
-                probability = self.get_probabilities_for_child(policy_output, move)
-                self.generate_child(move, node, idx, probability)
-            return self.select(node, idx)
+        '''Selects a node for expansion iteratively, generating children when needed.'''
+        current = node
+        while True:
+            if self.is_winning_state(current):
+                return current
 
-        return self.select_non_init(node, idx)
+            if not current.children:
+                # leaf node — populate its children then descend into the best one
+                self.load_board_string(current)
+                legal_moves = self.generate_moves(current)
+                _, policy_output = self.child_nn_info(current)
+                for move in legal_moves:
+                    probability = self.get_probabilities_for_child(policy_output, move)
+                    self.generate_child(move, current, idx, probability)
+                # if still no children after generation (no legal moves), return this node
+                if not current.children:
+                    return current
+                # loop back to descend into best child
+                continue
+
+            return self.select_non_init(current, idx)
 
     def select_non_init(self, node: NNMCSTNode, idx: int) -> NNMCSTNode:
         '''
@@ -291,15 +301,20 @@ class NNMCST(MCST):
         else:
             return False
 
-    def expand(self, node: NNMCSTNode, idx) -> None:
+    def expand(self, node: NNMCSTNode, idx) -> float:
         '''Expands the MCST by choosing a move and creating a child node.'''
         self.load_board_string(node)
         if self.is_winning_state(node):
-            return
+            # return the cached value so backpropagate always receives a float
+            cached = self.win_cache.get(node.cache_hash[1:])
+            return float(cached[1]) if cached else 0.0
         value_output, policy_output = self.child_nn_info(node)
         legal_move = False
         selected_move = None
         policy_copy = copy.copy(policy_output)
+        # track how many non-pass positions we've tried to avoid an infinite loop
+        max_tries = _BOARD * _BOARD
+        tries = 0
         while not legal_move:
             move = argmax(policy_copy)
             if move != _PASS:
@@ -307,6 +322,11 @@ class NNMCST(MCST):
                 board_node = self.board[move // _BOARD][move % _BOARD]
                 legal_move = self.test_piece_placement(board_node, node)
                 selected_move = board_node
+                tries += 1
+                if tries >= max_tries:
+                    # all positions tried and none legal — fall back to pass
+                    selected_move = "Pass"
+                    legal_move = True
             else:
                 selected_move = "Pass"
                 legal_move = True
@@ -344,7 +364,7 @@ class NNMCST(MCST):
             if "Pass" not in node.move_choices.keys():
                 node.switch_player()
                 temp = self.make_board_string()
-                temp_train_info = node.ai_training_info_node
+                temp_train_info = list(node.ai_training_info_node)
                 temp_train_info.append(temp)
                 child_node = NNMCSTNode((node.whose_turn, node.not_whose_turn), temp_train_info, prob,
                                         original_board, node.child_killed_last,
@@ -359,7 +379,7 @@ class NNMCST(MCST):
         if f"{location_tuple}" not in node.move_choices:
             self.expand_play_move(location_tuple, node)
             board_list = self.make_board_string()
-            temp_train_info = node.ai_training_info_node
+            temp_train_info = list(node.ai_training_info_node)
             temp_train_info.append(board_list)
             child_node = NNMCSTNode((node.whose_turn, node.not_whose_turn), temp_train_info, prob,
                                     board_list, node.child_killed_last,

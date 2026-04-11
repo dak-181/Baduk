@@ -23,6 +23,13 @@ def undo_turn(board: GoBoard, scoring: Optional[bool] = False) -> None:
         board.position_played_log.pop()
     revive = board.killed_log.pop()
 
+    # if we are in scoring mode and dead_stone_log has entries, clear them so
+    # faded stones are no longer tracked after the undo resets the board state.
+    # reset_turn=False because undo_turn calls switch_player() itself at the end.
+    if scoring and hasattr(board, 'dead_stone_log') and board.dead_stone_log:
+        from GoGame.remove_dead import restore_all_dead
+        restore_all_dead(board, reset_turn=False)
+
     if len(revive) > 0:
         unicode: Tuple[int, int, int] = revive[0][0]
     else:

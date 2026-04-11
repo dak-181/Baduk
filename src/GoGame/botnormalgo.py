@@ -115,7 +115,7 @@ class NNBotBoard(GoBoard):
         # seed training-info history if not already present
         if not hasattr(self, 'ai_training_info'):
             empty = '0' * (self.board_size * self.board_size)
-            self.ai_training_info = ['0' + empty] * 10
+            self.ai_training_info = ['0' + empty for _ in range(10)]
             self.ai_white_board   = empty
             self.ai_black_board   = '1' * (self.board_size * self.board_size)
 

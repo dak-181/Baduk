@@ -381,24 +381,29 @@ class ScoringBoard(GoBoard):
 
     def making_go_board_strings_helper(self, piece: BoardNode,
                                        connected_pieces: Union[None, Set[BoardNode]] = None) -> Set[BoardNode]:
-        """Helper function to recursively identify connected pieces in a Go board string."""
+        """Iteratively identify all connected pieces in a Go board string (replaces recursive version)."""
         if connected_pieces is None:
             connected_pieces = set()
-        connected_pieces.add(piece)
-        for neighbor in piece.connections:
-            if neighbor.stone_here_color == piece.stone_here_color and neighbor not in connected_pieces:
-                self.making_go_board_strings_helper(neighbor, connected_pieces)
-
-        diagonals = diagonals_setup(self, piece)
-
-        for diagonal in diagonals:
-            if diagonal.stone_here_color == piece.stone_here_color and diagonal not in connected_pieces:
-                xdiff = diagonal.row - piece.row
-                ydiff = diagonal.col - piece.col
-                xopen = self.board[piece.row + xdiff][piece.col].stone_here_color == cf.rgb_grey
-                yopen = self.board[piece.row][piece.col + ydiff].stone_here_color == cf.rgb_grey
-                if xopen or yopen:
-                    self.making_go_board_strings_helper(diagonal, connected_pieces)
+        stack = [piece]
+        while stack:
+            current = stack.pop()
+            if current in connected_pieces:
+                continue
+            connected_pieces.add(current)
+            # orthogonal neighbors of the same color
+            for neighbor in current.connections:
+                if neighbor.stone_here_color == current.stone_here_color and neighbor not in connected_pieces:
+                    stack.append(neighbor)
+            # diagonal neighbors of the same color (only if the shared side is open)
+            diagonals = diagonals_setup(self, current)
+            for diagonal in diagonals:
+                if diagonal.stone_here_color == current.stone_here_color and diagonal not in connected_pieces:
+                    xdiff = diagonal.row - current.row
+                    ydiff = diagonal.col - current.col
+                    xopen = self.board[current.row + xdiff][current.col].stone_here_color == cf.rgb_grey
+                    yopen = self.board[current.row][current.col + ydiff].stone_here_color == cf.rgb_grey
+                    if xopen or yopen:
+                        stack.append(diagonal)
         return connected_pieces
 
     def assigns_territory(self, sets: Tuple[Set[BoardNode], Set[BoardNode]]) -> None:
@@ -425,39 +430,45 @@ class ScoringBoard(GoBoard):
     def flood_fill_with_outer(self, piece: BoardNode, outer_pieces: BoardString,
                               connected_pieces: Union[None, Tuple[Set[BoardNode], Set[BoardNode]]] = None) -> Union[
                                   None, Tuple[Set[BoardNode], Set[BoardNode]]]:
-        '''Perform flood fill to identify connected pieces considering outer pieces.
+        '''Perform flood fill to identify connected pieces considering outer pieces (iterative).
         Returns a Tuple of Sets, where each set contains BoardNodes.
-        Set 1 is the set of objects of the same color, Set 2 is the outside objects.
+        Set 1 is the set of objects inside the outer boundary, Set 2 is the outside objects.
         '''
         if connected_pieces is None:
             connected_pieces = (set(), set())
-        connected_pieces[0].add(piece)
-        neighboring_pieces = piece.connections
-        for neighbor in neighboring_pieces:
-            if (neighbor.row, neighbor.col) not in outer_pieces.list_idx and neighbor not in connected_pieces[0]:
-                self.flood_fill_with_outer(neighbor, outer_pieces, connected_pieces)
-            else:
-                connected_pieces[1].add(neighbor)
-                pass
+        stack = [piece]
+        while stack:
+            current = stack.pop()
+            if current in connected_pieces[0]:
+                continue
+            connected_pieces[0].add(current)
+            for neighbor in current.connections:
+                if (neighbor.row, neighbor.col) not in outer_pieces.list_idx and neighbor not in connected_pieces[0]:
+                    stack.append(neighbor)
+                else:
+                    connected_pieces[1].add(neighbor)
         return connected_pieces
 
 
 def flood_fill(piece: BoardNode, connected_pieces: Union[None, Tuple[Set[BoardNode], Set[BoardNode]]] = None) -> Union[
         None, Tuple[Set[BoardNode], Set[BoardNode]]]:
     """
-    Perform flood fill to identify connected pieces.
-    Returns a Tuple of Sets, where each set contains BoardNodes. The first set contains inner BoardNodes.
-    And the second contains outer BoardNodes.
+    Perform flood fill to identify connected pieces (iterative — no recursion limit risk).
+    Returns a Tuple of Sets: (inner BoardNodes of same color, outer bordering BoardNodes).
     """
     if connected_pieces is None:
         connected_pieces = (set(), set())
-    connected_pieces[0].add(piece)
-    neighboring_pieces = piece.connections
-    for neighbor in neighboring_pieces:
-        if neighbor.stone_here_color == piece.stone_here_color and neighbor not in connected_pieces[0]:
-            flood_fill(neighbor, connected_pieces)
-        elif neighbor not in connected_pieces[1]:
-            connected_pieces[1].add(neighbor)
+    stack = [piece]
+    while stack:
+        current = stack.pop()
+        if current in connected_pieces[0]:
+            continue
+        connected_pieces[0].add(current)
+        for neighbor in current.connections:
+            if neighbor.stone_here_color == current.stone_here_color and neighbor not in connected_pieces[0]:
+                stack.append(neighbor)
+            elif neighbor not in connected_pieces[1]:
+                connected_pieces[1].add(neighbor)
     return connected_pieces
 
 
@@ -465,20 +476,22 @@ def flood_fill_two_colors(piece: BoardNode, second_color: Tuple[int, int, int],
                           connected_pieces: Union[None, Tuple[Set[BoardNode], Set[BoardNode]]] = None) -> Union[
         None, Tuple[Set[BoardNode], Set[BoardNode]]]:
     '''
-    Perform flood fill to identify connected pieces for two colors.
-    Returns a Tuple of Sets, where each set contains BoardNodes. The first set contains inner BoardNodes.
-    And the second contains BoardNodes already seen by the function.
+    Perform flood fill to identify connected pieces for two colors (iterative — no recursion limit risk).
+    Returns a Tuple of Sets: (inner BoardNodes of grey or second_color, outer bordering BoardNodes).
     '''
     if connected_pieces is None:
         connected_pieces = (set(), set())
-    connected_pieces[0].add(piece)
-    neighboring_pieces = piece.connections
-    for neighbor in neighboring_pieces:
-        if neighbor.stone_here_color == cf.rgb_grey and neighbor not in connected_pieces[0]:
-            flood_fill_two_colors(neighbor, second_color, connected_pieces)
-        elif neighbor.stone_here_color == second_color and neighbor not in connected_pieces[0]:
-            flood_fill_two_colors(neighbor, second_color, connected_pieces)
-        else:
-            connected_pieces[1].add(neighbor)
-            pass
+    stack = [piece]
+    while stack:
+        current = stack.pop()
+        if current in connected_pieces[0]:
+            continue
+        connected_pieces[0].add(current)
+        for neighbor in current.connections:
+            if neighbor in connected_pieces[0]:
+                continue
+            if neighbor.stone_here_color == cf.rgb_grey or neighbor.stone_here_color == second_color:
+                stack.append(neighbor)
+            else:
+                connected_pieces[1].add(neighbor)
     return connected_pieces

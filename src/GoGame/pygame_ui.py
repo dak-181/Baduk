@@ -402,13 +402,16 @@ def popup_get_text(msg: str, *, title: str = "", font=None,
     return None if result[0] is False else result[0]
 
 
-def popup_get_file(msg: str, *, title: str = "", font=None) -> Optional[str]:
+def popup_get_file(msg: str, *, title: str = "", font=None,
+                   initial_folder: Optional[str] = None) -> Optional[str]:
     """
     File-picker dialog.
-    Shows a scrollable list of .pkl files from the current working directory.
+    Shows a scrollable list of .pkl files from initial_folder (or CWD if None).
     Returns the full path string, or None if cancelled.
     """
     import os
+
+    search_dir = initial_folder if (initial_folder and os.path.isdir(initial_folder)) else "."
 
     surf     = _get_display()
     snapshot = surf.copy()
@@ -425,7 +428,7 @@ def popup_get_file(msg: str, *, title: str = "", font=None) -> Optional[str]:
     # collect pkl files
     try:
         files = sorted(
-            f for f in os.listdir(".") if f.lower().endswith(".pkl")
+            f for f in os.listdir(search_dir) if f.lower().endswith(".pkl")
         )
     except Exception:
         files = []
@@ -497,7 +500,7 @@ def popup_get_file(msg: str, *, title: str = "", font=None) -> Optional[str]:
                         selected[0] = idx
                 if ok_r.collidepoint(ev.pos):
                     if selected[0] is not None:
-                        result[0] = os.path.join(os.getcwd(), files[selected[0]])
+                        result[0] = os.path.join(search_dir, files[selected[0]])
                     else:
                         result[0] = False
                 if cancel_r.collidepoint(ev.pos):
@@ -507,7 +510,7 @@ def popup_get_file(msg: str, *, title: str = "", font=None) -> Optional[str]:
             if ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:    result[0] = False
                 if ev.key == pygame.K_RETURN and selected[0] is not None:
-                    result[0] = os.path.join(os.getcwd(), files[selected[0]])
+                    result[0] = os.path.join(search_dir, files[selected[0]])
                 if ev.key == pygame.K_DOWN and selected[0] is not None:
                     selected[0] = min(selected[0] + 1, len(files) - 1)
                 if ev.key == pygame.K_UP and selected[0] is not None:

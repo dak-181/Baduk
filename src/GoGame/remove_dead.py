@@ -9,7 +9,13 @@ def remove_dead(board: GoBoard) -> None:
     Waits for player input to mark or unmark dead stones.
     Clicking a live stone marks its whole connected group as dead (faded).
     Clicking an already-faded stone restores the whole group to life.
-    Switches players at the end so both can mark dead stones.
+
+    Intentional design: after a group is successfully marked dead the function
+    switches players and returns.  The caller (scoring_block) loops back and calls
+    remove_dead() again, giving the other player a chance to mark additional groups.
+    This correctly models the alternating-agreement phase used in Chinese-rules scoring.
+    Passing (clicking Accept) increments times_passed and also returns; once
+    times_passed >= 1 the caller finalises scoring.
     '''
     from GoGame.turn_options import remove_dead_turn_options
     board.killed_last_turn.clear()
@@ -69,17 +75,18 @@ def _mark_group_dead(board: GoBoard, piece: BoardNode) -> None:
     board.dead_stone_log.append(piece_string)
 
 
-def restore_all_dead(board: GoBoard) -> None:
-    '''Restores all faded dead stones to their original colors, clears dead_stone_log,
-    and resets whose_turn to what it was when scoring began.'''
+def restore_all_dead(board: GoBoard, reset_turn: bool = True) -> None:
+    '''Restores all faded dead stones to their original colors and clears dead_stone_log.
+    If reset_turn is True (default), also resets whose_turn to what it was when scoring began.
+    Pass reset_turn=False when called from undo so the undo logic controls turn order itself.'''
     if not hasattr(board, 'dead_stone_log'):
         return
     for piece_string in board.dead_stone_log:
         for (row, col), original_color in piece_string:
             board.board[row][col].stone_here_color = original_color
     board.dead_stone_log = []
-    # restore the correct player turn
-    if hasattr(board, 'scoring_start_turn'):
+    # restore the correct player turn only when not being driven by undo
+    if reset_turn and hasattr(board, 'scoring_start_turn'):
         if board.scoring_start_turn == board.player_black:
             board.whose_turn = board.player_black
             board.not_whose_turn = board.player_white

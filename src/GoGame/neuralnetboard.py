@@ -10,11 +10,18 @@ import tensorflow as tf
 sys.setrecursionlimit(10000)
 
 # enable GPU memory growth — prevents TF grabbing all VRAM at startup
+# Guard against RuntimeError when TF context is already initialized (e.g. when
+# loading a saved game causes a second import after TF has already been used).
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
-    print(f"GPU enabled: {[g.name for g in gpus]}")
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"GPU enabled: {[g.name for g in gpus]}")
+    except RuntimeError:
+        # Context already initialized — memory growth must be set before first use.
+        # This is harmless; TF will use whatever allocation strategy was set first.
+        pass
 
 # safety cap — 19x19 games can run longer than 9x9
 MAX_TURNS = 600

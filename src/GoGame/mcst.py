@@ -9,7 +9,7 @@ from GoGame.scoringboard import flood_fill_two_colors
 
 class MCSTNode:
     def __init__(self, turn_person: Tuple[Player, Player],
-                 board_list=None, killed_last: Union[Set[None], Set[BoardNode]] = set(),
+                 board_list=None, killed_last: Union[Set[None], Set[BoardNode]] = None,
                  placement_location: Tuple[Union[str, Tuple[int, int]], int, Tuple[int, int, int]] = ((-1, -1), -1, -1),
                  parent: Union[None, Type['MCSTNode']] = None) -> None:
         """
@@ -49,7 +49,7 @@ class MCSTNode:
         self.move_choices: Dict[str, BoardNode] = dict()
         self.visits: int = 0
         self.wins: int = 0
-        self.killed_last_turn: Union[Set[None], Set[BoardNode]] = killed_last
+        self.killed_last_turn: Union[Set[None], Set[BoardNode]] = killed_last if killed_last is not None else set()
         self.child_killed_last: Union[Set[BoardNode], Set[None]] = set()
         self.visit_kill: Set[BoardNode] = set()
         self.whose_turn: Player = turn_person[0]

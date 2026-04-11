@@ -1,4 +1,4 @@
-import GoGame.neuralnetboard as nn
+import GoGame.neuralnetboard as nnboard
 import numpy as np
 from typing import List, Optional
 import sys
@@ -99,8 +99,8 @@ def training_cycle_process(length: int, log_list, game_counter):
 
     for i in range(length):
         log(f"Game {i+1}/{length} starting... (board: {_BOARD}x{_BOARD})")
-        result = nn.initializing_game(nn_mod, nn_mod, _BOARD, True)
-        if result == 1:
+        result = nnboard.initializing_game(nn_mod, nn_mod, _BOARD, True)
+        if int(result) == 1:
             sum_val += 1
         game_counter[0] = i + 1
         elapsed = time.time() - start_time
@@ -138,8 +138,8 @@ def training_cycle(length: int, state: Optional[dict] = None):
             break
 
         log(f"Game {i+1}/{length} starting... (board: {_BOARD}x{_BOARD})")
-        result = nn.initializing_game(nn_mod, nn_mod, _BOARD, True)
-        if result == 1:
+        result = nnboard.initializing_game(nn_mod, nn_mod, _BOARD, True)
+        if int(result) == 1:
             sum_val += 1
         if state is not None:
             state["game"] = i + 1
@@ -163,7 +163,9 @@ def neural_net_calcuation(input_boards: List[str], board_size: int, input_nn):
 
 
 def generate_17_length(input_boards: List[str], board_size: int):
-    """Converts board history into the 17-plane numpy array for AlphaGo Zero."""
+    """Converts board history into the 17-plane numpy array for AlphaGo Zero.
+    Works on a copy of input_boards so the caller's list is never mutated."""
+    input_boards = list(input_boards)   # defensive copy — pop(0) empties the list
     input_array = np.zeros((17, board_size, board_size), dtype=np.float32)
     board_idx   = 0
     color_turn  = int(input_boards[-1][0]) if input_boards[-1] else 1
@@ -276,8 +278,11 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
 
     # enable GPU memory growth in this worker process
     import tensorflow as tf
-    for gpu in tf.config.list_physical_devices('GPU'):
-        tf.config.experimental.set_memory_growth(gpu, True)
+    try:
+        for gpu in tf.config.list_physical_devices('GPU'):
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError:
+        pass
 
     # Load existing weights if available, otherwise start fresh
     model = nn_model_from_file("other_play.weights.h5")
@@ -352,8 +357,11 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
 
     # enable GPU memory growth in this worker process
     import tensorflow as tf
-    for gpu in tf.config.list_physical_devices('GPU'):
-        tf.config.experimental.set_memory_growth(gpu, True)
+    try:
+        for gpu in tf.config.list_physical_devices('GPU'):
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError:
+        pass
 
     model       = nn_model()
     value_loss  = keras.losses.MeanSquaredError()
@@ -386,7 +394,7 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         nn_old  = nn_model()
         sum_val = 0
         for i in range(eval_games):
-            result = nn.initializing_game(nn_new, nn_old, _BOARD, True)
+            result = nnboard.initializing_game(nn_new, nn_old, _BOARD, True)
             if result == 1:
                 sum_val += 1
             log(f"  Eval game {i+1}/{eval_games} — new model wins: {sum_val}")
