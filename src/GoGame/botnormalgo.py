@@ -78,8 +78,8 @@ class NNBotBoard(GoBoard):
         return self._nn_model
 
     def playing_mode_end_of_game(self) -> bool:
-        from GoGame.scoringboard import making_score_board_object
-        return making_score_board_object(self)
+        ui.scoring_mode_popup()
+        return self.scoring_block()
 
     def play_game_playing_mode(self, from_file, fixes_handicap) -> bool:
         if not from_file:
@@ -118,8 +118,18 @@ class NNBotBoard(GoBoard):
             self.ai_black_board   = '1' * (self.board_size * self.board_size)
 
         MAX_ATTEMPTS = 10
+        MAX_FIRSTLINE_RETRIES = 5
         attempt = 0
         truth_value: Union[bool, Literal['Passed', 'Break']] = False
+
+        # build first-line index set for filtering early moves
+        _bs = self.board_size
+        _first_line = set()
+        for i in range(_bs):
+            _first_line.add(i)                   # row 0
+            _first_line.add((_bs - 1) * _bs + i) # row 18
+            _first_line.add(i * _bs)              # col 0
+            _first_line.add(i * _bs + (_bs - 1)) # col 18
 
         while not truth_value:
             if attempt >= MAX_ATTEMPTS:
@@ -129,6 +139,7 @@ class NNBotBoard(GoBoard):
                 self.position_played_log.append(("Pass", -3, -3))
                 self.killed_log.append([])
                 self.switch_player()
+                ui.def_popup("AI passed.", 2)
                 ui.refresh_board_pygame(self)
                 return
 
@@ -145,8 +156,28 @@ class NNBotBoard(GoBoard):
             )
             val, _policy, formatted_info = mcts.run_mcst()
 
+            # re-run MCTS if it picks a first-line move in the first 100 turns
+            if self.turn_num < 100 and val in _first_line:
+                firstline_retries = 0
+                while val in _first_line and firstline_retries < MAX_FIRSTLINE_RETRIES:
+                    board_copy = copy.deepcopy(self.board)
+                    mcts = NNMCST(
+                        board_copy,
+                        self.ai_training_info,
+                        self.ai_black_board,
+                        self.ai_white_board,
+                        cf.PLAY_MCTS_ITERATIONS,
+                        (self.whose_turn, self.not_whose_turn),
+                        self._get_nn(),
+                        self.turn_num,
+                    )
+                    val, _policy, formatted_info = mcts.run_mcst()
+                    firstline_retries += 1
+
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value in ("Break", "Passed"):
+                if truth_value == "Passed":
+                    ui.def_popup("AI passed.", 2)
                 ui.refresh_board_pygame(self)
                 return
             if not truth_value:

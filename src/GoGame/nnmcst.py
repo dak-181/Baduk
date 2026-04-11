@@ -198,13 +198,28 @@ class NNMCST(MCST):
         output_chances = self.get_choice_info()
         choice_weights = self.get_deep_info()
         the_range = list(range(_MOVES))
-        from random import choices, randrange
+        from random import choices
         if self.turn_num < 60:
             the_range = the_range[:-1]
             choice_weights = choice_weights[:-1]
-        # if all weights are zero (no children explored yet), pick uniformly
+        # suppress first-line moves for the first 100 turns
+        if self.turn_num < 100:
+            first_line = set()
+            for i in range(_BOARD):
+                first_line.add(i)                          # row 0
+                first_line.add((_BOARD - 1) * _BOARD + i) # row 18
+                first_line.add(i * _BOARD)                 # col 0
+                first_line.add(i * _BOARD + (_BOARD - 1)) # col 18
+            paired = [(v, w) for v, w in zip(the_range, choice_weights)
+                      if v not in first_line]
+            if any(w > 0 for _, w in paired):
+                the_range, choice_weights = zip(*paired)
+                the_range      = list(the_range)
+                choice_weights = list(choice_weights)
+        # if all weights are zero, pick uniformly — use actual move values not indices
         if all(w == 0 for w in choice_weights):
-            location = [randrange(len(the_range))]
+            from random import randrange
+            location = [the_range[randrange(len(the_range))]]
         else:
             location = choices(the_range, weights=choice_weights, k=1)
         return location[0], output_chances, nn_input_backup
