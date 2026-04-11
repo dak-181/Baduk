@@ -274,12 +274,25 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
 
     log(f"Loaded {len(dataset)} SGF training samples.")
 
+    # enable GPU memory growth in this worker process
+    import tensorflow as tf
+    for gpu in tf.config.list_physical_devices('GPU'):
+        tf.config.experimental.set_memory_growth(gpu, True)
+
     # Load existing weights if available, otherwise start fresh
     model = nn_model_from_file("other_play.weights.h5")
 
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    sample_size = max(size_of_batch, len(dataset) // 4)
+    # cap sample size to avoid OOM on large datasets
+    sample_size = min(max(size_of_batch, len(dataset) // 4), 2000)
+
+    # compile once outside the loop
+    model.compile(
+        optimizer='adam',
+        loss={'dense_2': value_loss, 'softmax': policy_loss},
+        metrics={'softmax': ['accuracy']}
+    )
 
     for epoch in range(epochs):
         selected = random.sample(dataset, min(sample_size, len(dataset)))
@@ -290,11 +303,6 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
         }
-        model.compile(
-            optimizer='adam',
-            loss={'dense_2': value_loss, 'softmax': policy_loss},
-            metrics={'softmax': ['accuracy']}
-        )
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
         log(f"Epoch {epoch+1}/{epochs} complete.")
 
@@ -341,10 +349,23 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         return
 
     log(f"Loaded {len(dataset)} training samples.")
+
+    # enable GPU memory growth in this worker process
+    import tensorflow as tf
+    for gpu in tf.config.list_physical_devices('GPU'):
+        tf.config.experimental.set_memory_growth(gpu, True)
+
     model       = nn_model()
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    sample_size = max(size_of_batch, len(dataset) // 4)
+    sample_size = min(max(size_of_batch, len(dataset) // 4), 2000)
+
+    # compile once outside the loop
+    model.compile(
+        optimizer='adam',
+        loss={'dense_2': value_loss, 'softmax': policy_loss},
+        metrics={'softmax': ['accuracy']}
+    )
 
     for epoch in range(epochs):
         selected = random.sample(dataset, min(sample_size, len(dataset)))
@@ -355,11 +376,6 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
         }
-        model.compile(
-            optimizer='adam',
-            loss={'dense_2': value_loss, 'softmax': policy_loss},
-            metrics={'softmax': ['accuracy']}
-        )
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
         log(f"Epoch {epoch+1}/{epochs} complete.")
 
