@@ -1,4 +1,5 @@
 *.h5
 *.json
 *.sgf
+*.pkl
 __pycache__
