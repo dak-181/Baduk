@@ -58,6 +58,8 @@ class BotBoard(GoBoard):
             time.sleep(.5)
             ui.refresh_board_pygame(self)
             if truth_value == "Passed":
+                self.preprevious_board_state = self.previous_board_state
+                self.previous_board_state = self.make_board_string()[1:]
                 return
         self.make_turn_info()
 
@@ -138,6 +140,8 @@ class NNBotBoard(GoBoard):
                 self.turn_num += 1
                 self.position_played_log.append(("Pass", -3, -3))
                 self.killed_log.append([])
+                self.preprevious_board_state = self.previous_board_state
+                self.previous_board_state = self.make_board_string()[1:]
                 self.switch_player()
                 ui.def_popup("AI passed.", 2)
                 ui.refresh_board_pygame(self)
@@ -177,6 +181,8 @@ class NNBotBoard(GoBoard):
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value in ("Break", "Passed"):
                 if truth_value == "Passed":
+                    self.preprevious_board_state = self.previous_board_state
+                    self.previous_board_state = self.make_board_string()[1:]
                     ui.def_popup("AI passed.", 2)
                 ui.refresh_board_pygame(self)
                 return
@@ -193,4 +199,6 @@ class NNBotBoard(GoBoard):
         for item in self.killed_last_turn:
             temp.append((self.not_whose_turn.unicode, item.row, item.col))
         self.killed_log.append(temp)
+        self.preprevious_board_state = self.previous_board_state
+        self.previous_board_state = self.make_board_string()[1:]
         self.switch_player()

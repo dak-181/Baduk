@@ -145,6 +145,8 @@ class GoBoard():
         # Mode and handicap attributes
         self.mode, self.mode_change = "Playing", True
         self.last_move = None
+        self.previous_board_state: Union[str, None] = None
+        self.preprevious_board_state: Union[str, None] = None
         self.handicap: Tuple[bool, str, int] = Handicap.default_handicap()
 
         # pygame and pySimpleGui attributes
@@ -402,6 +404,8 @@ class GoBoard():
         for item in self.killed_last_turn:
             temp_list.append((self.not_whose_turn.unicode, item.row, item.col))
         self.killed_log.append(temp_list)
+        self.preprevious_board_state = self.previous_board_state
+        self.previous_board_state = self.make_board_string()[1:]
         self.switch_player()
 
     def play_piece(self, row: int, col: int) -> bool:
@@ -430,12 +434,38 @@ class GoBoard():
             return True
 
     def ko_rule_break(self, piece: BoardNode) -> bool:
-        '''Checks if placing a piece breaks the ko rule.'''
-        if self_death_rule(self, piece, self.whose_turn, set()) > 0:
+        '''
+        Checks if placing a piece breaks the ko rule by comparing the resulting
+        board state to the state two moves ago. This correctly allows snapbacks
+        (which capture multiple stones and produce a new board state) while
+        still preventing simple ko recaptures.
+        '''
+        if not hasattr(self, 'preprevious_board_state') or self.preprevious_board_state is None:
             return False
-        if piece in self.killed_last_turn:
-            return True
-        return False
+
+        # temporarily place the stone and simulate captures
+        original_colors = {}
+        piece.stone_here_color = self.whose_turn.unicode
+        original_colors[piece] = cf.rgb_grey
+
+        # find and remove captured opponent groups
+        for neighbor in piece.connections:
+            if neighbor.stone_here_color == self.not_whose_turn.unicode:
+                if self_death_rule(self, neighbor, self.not_whose_turn, set()) == 0:
+                    for node in self.visit_kill:
+                        if node not in original_colors:
+                            original_colors[node] = node.stone_here_color
+                        node.stone_here_color = cf.rgb_grey
+
+        # get resulting board state — strip turn prefix for comparison
+        result = self.make_board_string()[1:]
+
+        # undo everything
+        for node, color in original_colors.items():
+            node.stone_here_color = color
+
+        # compare to state two moves ago
+        return result == self.preprevious_board_state
 
     def kill_stones(self, piece: BoardNode) -> bool:
         '''

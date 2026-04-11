@@ -23,6 +23,8 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
         board.turn_num += 1
         board.position_played_log.append((text, -3, -3))
         board.killed_log.append([])
+        board.preprevious_board_state = board.previous_board_state
+        board.previous_board_state = board.make_board_string()[1:]
         board.switch_player()
 
     elif event == "Save Game":

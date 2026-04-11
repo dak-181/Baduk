@@ -34,33 +34,22 @@ def initializing_game(nn, nn_bad, board_size: int = cf.AI_BOARD_SIZE,
 class NNBoard(GoBoard):
     def __init__(self, nn, nn_bad, board_size=9, defaults=True,
                  state: Optional[dict] = None):
-        # ── store nn/nn_bad FIRST before any super().__init__ calls ──────
+        # store nn/nn_bad and state before super().__init__
+        # so any overridden methods called during init can access them
         self.nn     = nn
         self.nn_bad = nn_bad
-        self._state = state   # shared progress dict from main.py
-
+        self._state = state
         self.ai_training_info: List[str] = []
         self.ai_output_info:   List[List[float]] = []
-        self.defaults:   bool = defaults
-        self.board_size: int  = board_size
-        self.board: List[List[BoardNode]] = self.setup_board()
-        self.init_helper_player()
 
-        self.times_passed, self.turn_num = 0, 0
-        self.position_played_log: List[Union[str, Tuple[str, int, int]]] = []
-        self.visit_kill:       Set[BoardNode] = set()
-        self.killed_last_turn: Set[BoardNode] = set()
-        self.killed_log: List[List[Union[Tuple[Tuple[int, int, int], int, int], List[None]]]] = list()
+        super().__init__(board_size, defaults)
 
-        self.mode, self.mode_change = "Playing", True
-        self.handicap: Tuple[bool, str, int] = Handicap.default_handicap()
-
-        # No pygame window for AI self-play
-        self.window       = None
-        self.screen       = None
-        self.backup_board = None
+        # override pygame attributes — no window for headless self-play
+        self.window            = None
+        self.screen            = None
+        self.backup_board      = None
         self.pygame_board_vals = None
-        self.btn_rects    = {}
+        self.btn_rects         = {}
 
     # ── cancellation helper ───────────────────────────────────────────────
     def _cancelled(self) -> bool:
@@ -143,6 +132,8 @@ class NNBoard(GoBoard):
                 self.turn_num += 1
                 self.position_played_log.append(("Pass", -3, -3))
                 self.killed_log.append([])
+                self.preprevious_board_state = self.previous_board_state
+                self.previous_board_state = self.make_board_string()[1:]
                 self.switch_player()
                 return
 
@@ -165,6 +156,9 @@ class NNBoard(GoBoard):
 
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value == "Break" or truth_value == "Passed":
+                if truth_value == "Passed":
+                    self.preprevious_board_state = self.previous_board_state
+                    self.previous_board_state = self.make_board_string()[1:]
                 return
             if not truth_value:
                 attempt += 1
@@ -177,6 +171,8 @@ class NNBoard(GoBoard):
             temp_list.append((self.not_whose_turn.unicode, item.row, item.col))
         self.killed_log.append(temp_list)
         self.ai_training_info.append(self.make_board_string())
+        self.preprevious_board_state = self.previous_board_state
+        self.previous_board_state = self.make_board_string()[1:]
         self.switch_player()
 
     def print_board(self) -> None:

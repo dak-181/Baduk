@@ -72,6 +72,8 @@ class ScoringBoard(GoBoard):
         self.handicap: Tuple[bool, str, int] = self.parent.handicap
 
         self.pygame_board_vals: Tuple[int, float, float] = self.parent.pygame_board_vals
+        self.previous_board_state = self.parent.previous_board_state
+        self.preprevious_board_state = self.parent.preprevious_board_state
         self.empty_strings: List[BoardString] = list()
         self.black_strings: List[BoardString] = list()
         self.white_strings: List[BoardString] = list()
