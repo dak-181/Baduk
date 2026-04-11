@@ -274,20 +274,8 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
 
     log(f"Loaded {len(dataset)} SGF training samples.")
 
-    # Build a fresh model — no weights loaded
-    moves  = _BOARD * _BOARD + 1
-    shapez = (17, _BOARD, _BOARD)
-    input_layer  = keras.layers.Input(shape=shapez)
-    conv_output  = nn_model_conv_layer(input_layer)
-    res_output   = nn_model_res_layer(conv_output)
-    for _ in range(9):
-        res_output = nn_model_res_layer(res_output)
-    policy_output = nn_model_policy_head(res_output, moves)
-    value_output  = nn_model_value_head(res_output)
-    model = keras.models.Model(
-        inputs=input_layer,
-        outputs={'dense_2': value_output, 'softmax': policy_output}
-    )
+    # Load existing weights if available, otherwise start fresh
+    model = nn_model_from_file("other_play.weights.h5")
 
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
