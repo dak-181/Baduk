@@ -138,7 +138,7 @@ class NNBotBoard(GoBoard):
                 self.ai_training_info,
                 self.ai_black_board,
                 self.ai_white_board,
-                cf.MCTS_ITERATIONS,
+                cf.PLAY_MCTS_ITERATIONS,
                 (self.whose_turn, self.not_whose_turn),
                 self._get_nn(),
                 self.turn_num,

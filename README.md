@@ -142,8 +142,10 @@ Two settings in `src/GoGame/config.py` control the AI:
 
 ```python
 AI_BOARD_SIZE   = 19   # 9, 13, or 19
-MCTS_ITERATIONS = 100  # 25 = fast/weak · 200 = strong · 800 = very strong/slow
+MCTS_ITERATIONS = 200   # Used during self-play training
+PLAY_MCTS_ITERATIONS = 25   # used when playing against a human
 ```
+Iterations: 25 = fast/weak · 200 = strong · 800 = very strong/slow.
 
 > **Note:** Changing `AI_BOARD_SIZE` requires deleting any existing `.h5` weight files since the model architecture changes with board size.
 
