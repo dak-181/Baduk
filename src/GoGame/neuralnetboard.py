@@ -157,7 +157,6 @@ class NNBoard(GoBoard):
                 return
 
             self.board_copy: List[BoardString] = copy.deepcopy(self.board)
-            self.print_board()
             t0 = time.time()
 
             chosen_nn = self.nn if good_bot else self.nn_bad
@@ -173,9 +172,6 @@ class NNBoard(GoBoard):
             turn_color = 1 if self.whose_turn == self.player_black else 2
             self.ai_output_info.append((formatted_ai_training_info, output_chances, turn_color))
 
-            t1 = time.time()
-            print(f"  t={t1-t0:.2f}s  val={val}  pos={val//9},{val%9}  turn={self.turn_num}")
-
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value == "Break" or truth_value == "Passed":
                 if truth_value == "Passed":
@@ -184,6 +180,12 @@ class NNBoard(GoBoard):
                 return
             if not truth_value:
                 attempt += 1
+                continue
+
+            # print board state and timing only on the successful turn
+            t1 = time.time()
+            self.print_board()
+            print(f"  t={t1-t0:.2f}s  val={val}  pos={val//self.board_size},{val%self.board_size}  turn={self.turn_num}")
 
         self.make_turn_info()
 
@@ -198,15 +200,23 @@ class NNBoard(GoBoard):
         self.switch_player()
 
     def print_board(self) -> None:
-        """Prints the board to the terminal using emoji."""
-        print_board = self.ai_training_info[-1]
-        for idx in range(self.board_size):
-            row = print_board[(idx * self.board_size + 1):(idx * self.board_size + self.board_size + 1)]
+        """Prints the current board state as emoji, read from self.board.
+        Skips if no stones have been placed yet."""
+        has_stone = any(
+            node.stone_here_color != cf.rgb_grey
+            for row in self.board for node in row
+        )
+        if not has_stone:
+            return
+        for row in self.board:
             line = ""
-            for ch in row:
-                if ch == '1':   line += '\u26AB'
-                elif ch == '2': line += '\u26AA'
-                else:           line += '\u26D4'
+            for node in row:
+                if node.stone_here_color == cf.rgb_black:
+                    line += '\u26AB'
+                elif node.stone_here_color == cf.rgb_white:
+                    line += '\u26AA'
+                else:
+                    line += '\u26D4'
             print(line)
 
     def making_score_board_object(self):

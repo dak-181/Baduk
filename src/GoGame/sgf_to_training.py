@@ -344,6 +344,8 @@ def convert_sgf_dir(sgf_dir: str, verbose: bool = True) -> int:
                   f"{len(all_new_samples)} new samples so far...")
 
     combined = existing_data + all_new_samples
+    if verbose:
+        print(f"Saving {len(combined)} total samples to {OUTPUT_PATH}...")
     with open(OUTPUT_PATH, 'w') as f:
         json.dump(combined, f)
 

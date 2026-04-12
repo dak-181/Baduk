@@ -151,7 +151,7 @@ def start_game_menu() -> str:
     Draws the main menu and returns the chosen action string:
       'Load Game' | 'New Custom Game' | 'New Default Game'
     | 'Play Against AI' | 'AI SelfPlay' | 'AI Training'
-    | 'Import SGF Files' | 'Train SGF Model' | 'Exit Game'
+    | 'Import SGF Files' | 'SGF Training' | 'Exit Game'
     """
     screen = _make_window()
     clock  = pygame.time.Clock()
@@ -164,7 +164,7 @@ def start_game_menu() -> str:
         "AI SelfPlay",
         "AI Training",
         "Import SGF Files",
-        "Train SGF Model",
+        "SGF Training",
         "Exit Game",
     ]
 

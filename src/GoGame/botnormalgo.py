@@ -75,9 +75,51 @@ class NNBotBoard(GoBoard):
 
     def _get_nn(self):
         if self._nn_model is None:
+            # TF model construction and weight loading can take several seconds.
+            # Show a non-blocking overlay so the window doesn't appear frozen.
+            self._show_loading_overlay(f"Loading AI model: {self.weights_path}")
             from GoGame.neuralnet import nn_model_from_file
             self._nn_model = nn_model_from_file(self.weights_path, self.board_size)
+            self._dismiss_loading_overlay()
         return self._nn_model
+
+    def _show_loading_overlay(self, message: str) -> None:
+        """Draw a simple loading message over the current board surface."""
+        import pygame
+        screen = getattr(self, 'screen', None)
+        if screen is None:
+            return
+        import GoGame.uifunctions as _ui
+        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+        try:
+            f_title = pygame.font.SysFont("arial", 20, bold=True)
+            f_sub   = pygame.font.SysFont("arial", 14)
+        except Exception:
+            f_title = pygame.font.Font(None, 24)
+            f_sub   = pygame.font.Font(None, 18)
+        cx = screen.get_width() // 2
+        cy = screen.get_height() // 2
+        ts = f_title.render("Initialising TensorFlow...", True, (220, 185, 90))
+        screen.blit(ts, ts.get_rect(centerx=cx, centery=cy - 20))
+        ts2 = f_sub.render(message, True, (200, 185, 155))
+        screen.blit(ts2, ts2.get_rect(centerx=cx, centery=cy + 12))
+        ts3 = f_sub.render("Please wait", True, (160, 145, 115))
+        screen.blit(ts3, ts3.get_rect(centerx=cx, centery=cy + 34))
+        pygame.display.flip()
+        # store the pre-overlay surface so we can restore it
+        self._pre_overlay_surface = screen.copy()
+
+    def _dismiss_loading_overlay(self) -> None:
+        """Restore the board surface after loading completes."""
+        import pygame
+        screen = getattr(self, 'screen', None)
+        pre = getattr(self, '_pre_overlay_surface', None)
+        if screen is not None and pre is not None:
+            screen.blit(pre, (0, 0))
+            pygame.display.flip()
+            self._pre_overlay_surface = None
 
     def playing_mode_end_of_game(self) -> bool:
         ui.scoring_mode_popup()
@@ -91,6 +133,9 @@ class NNBotBoard(GoBoard):
         if fixes_handicap:
             hc = Handicap(self)
             self.handicap = hc.custom_handicap(False)
+        # warm up TF now so the loading overlay shows before the player's first move
+        # rather than freezing after it
+        self._get_nn()
         self.turn_loop()
         self.mode = "Scoring"
         self.times_passed = 0

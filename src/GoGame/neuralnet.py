@@ -28,6 +28,7 @@ def nn_model(board_size: int = _BOARD):
     Policy head outputs board_size² + 1 values (all moves + pass).
     Loads saved weights if available.
     """
+    print(f"Initialising TensorFlow model ({board_size}x{board_size})...")
     moves   = board_size * board_size + 1
     shapez  = (17, board_size, board_size)
     input_layer  = keras.layers.Input(shape=shapez)
@@ -41,6 +42,7 @@ def nn_model(board_size: int = _BOARD):
         inputs=input_layer,
         outputs={'dense_2': value_output, 'softmax': policy_output}
     )
+    print("Model graph built. Loading weights...")
     load_model_weights(model)
     return model
 
@@ -83,14 +85,13 @@ def nn_model_value_head(input_array):
 
 def training_cycle_process(length: int, log_list, game_counter):
     """
-    Process-safe version of training_cycle. Logs to a Manager list,
-    updates game_counter, and saves results to saved_self_play.json.
+    Process-safe version of training_cycle. stdout is redirected to log_list
+    by the worker, so print() alone is sufficient for all logging here.
     """
     import time
 
     def log(msg: str):
         print(msg)
-        log_list.append(msg)
 
     sum_val    = 0
     start_time = time.time()
@@ -217,14 +218,16 @@ def load_model_weights(model, filename="model.weights.h5"):
     import os
     if os.path.exists(filename):
         model.load_weights(filename)
+        print(f"Weights loaded: {filename}")
     else:
-        print(f"No saved weights at '{filename}' — starting with random weights.")
+        print(f"No weights file found at '{filename}' — starting with random weights.")
 
 
 def nn_model_from_file(weights_path: str, board_size: int = _BOARD):
     """Build the model and load weights from a specific .h5 file.
     Unlike nn_model(), this does NOT fall back to model.weights.h5."""
     import os
+    print(f"Initialising TensorFlow model ({board_size}x{board_size})...")
     moves  = board_size * board_size + 1
     shapez = (17, board_size, board_size)
     input_layer  = keras.layers.Input(shape=shapez)
@@ -238,11 +241,12 @@ def nn_model_from_file(weights_path: str, board_size: int = _BOARD):
         inputs=input_layer,
         outputs={'dense_2': value_output, 'softmax': policy_output}
     )
+    print("Model graph built. Loading weights...")
     if os.path.exists(weights_path):
         model.load_weights(weights_path)
-        print(f"Loaded weights from '{weights_path}'")
+        print(f"Weights loaded: {weights_path}")
     else:
-        print(f"Weights file '{weights_path}' not found — using random weights.")
+        print(f"No weights file found at '{weights_path}' — using random weights.")
     return model
 
 
@@ -308,7 +312,7 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
         }
-        model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
+        model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
         log(f"Epoch {epoch+1}/{epochs} complete.")
 
     model.save_weights("other_play.weights.h5")
@@ -384,7 +388,7 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in selected]),
             'softmax': np.array([s[1] for s in selected])
         }
-        model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=1)
+        model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
         log(f"Epoch {epoch+1}/{epochs} complete.")
 
     # ── optional evaluation ───────────────────────────────────────────────
