@@ -164,9 +164,10 @@ class NNBoard(GoBoard):
                 self.board_copy, self.ai_training_info,
                 self.ai_black_board, self.ai_white_board,
                 cf.MCTS_ITERATIONS, (self.whose_turn, self.not_whose_turn),
-                chosen_nn, self.turn_num
+                chosen_nn, self.turn_num,
+                training=True
             )
-            val, output_chances, formatted_ai_training_info = self.turn_nnmcst.run_mcst()
+            val, output_chances, formatted_ai_training_info, root_value = self.turn_nnmcst.run_mcst()
 
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value == "Break" or truth_value == "Passed":
@@ -186,6 +187,13 @@ class NNBoard(GoBoard):
             t1 = time.time()
             self.print_board()
             print(f"  t={t1-t0:.2f}s  val={val}  pos={val//self.board_size},{val%self.board_size}  turn={self.turn_num}")
+
+            # resignation: if the current player's position is hopeless (value < -0.9)
+            # and we're past the opening, end the game rather than playing it out.
+            # AGZ threshold: -0.9, minimum turn: 20.
+            if self.turn_num > 20 and root_value < -0.9:
+                print(f"  Resigned at turn {self.turn_num} (value={root_value:.3f})")
+                self.times_passed = 2
 
         self.make_turn_info()
 

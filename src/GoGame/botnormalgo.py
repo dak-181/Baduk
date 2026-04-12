@@ -203,7 +203,7 @@ class NNBotBoard(GoBoard):
                 self._get_nn(),
                 self.turn_num,
             )
-            val, _policy, formatted_info = mcts.run_mcst()
+            val, _policy, formatted_info, _root_val = mcts.run_mcst()
 
             # re-run MCTS if it picks a first-line move in the first 100 turns
             if self.turn_num < 100 and val in _first_line:
@@ -220,7 +220,7 @@ class NNBotBoard(GoBoard):
                         self._get_nn(),
                         self.turn_num,
                     )
-                    val, _policy, formatted_info = mcts.run_mcst()
+                    val, _policy, formatted_info, _root_val = mcts.run_mcst()
                     firstline_retries += 1
 
             truth_value = play_turn_bot_helper(self, truth_value, val)

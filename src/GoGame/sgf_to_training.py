@@ -256,10 +256,16 @@ def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
 
         # build training input BEFORE placing the stone (state seen by the player)
         recent_history = history[-HISTORY_DEPTH:]
-        if recent_history:
-            last = recent_history[-1]
-            body = last[1:] if len(last) > BOARD_SIZE * BOARD_SIZE else last
-            recent_history[-1] = str(turn_num) + body
+
+        # Append a color sentinel matching nn_input_generation in nnmcst.py:
+        # all '1's if black to move, all '0's if white to move.
+        # set_end() in _build_17_plane_input encodes this as plane 16 = color indicator
+        # (all 1.0 = black to move, all 0.0 = white to move), matching generate_17_length.
+        if turn_num == 1:
+            color_sentinel = '1' * BOARD_SIZE * BOARD_SIZE   # black to move
+        else:
+            color_sentinel = '0' * BOARD_SIZE * BOARD_SIZE   # white to move
+        recent_history = recent_history + [color_sentinel]
 
         board_state_list = _build_17_plane_input(recent_history, BOARD_SIZE)
         policy_vector    = _one_hot_policy(move_rc, BOARD_SIZE)

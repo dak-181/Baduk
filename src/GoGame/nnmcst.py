@@ -76,7 +76,8 @@ class NNMCSTNode(MCSTNode):
 
 class NNMCST(MCST):
     def __init__(self, board: List[List[BoardNode]], training_info: List[str], white_board: str, black_board: str,
-                 iterations: int, turn_person: Tuple[Player, Player], nn, turnnum: int) -> None:
+                 iterations: int, turn_person: Tuple[Player, Player], nn, turnnum: int,
+                 training: bool = False) -> None:
         """
         Initializes an MCST instance representing a Monte Carlo Search Tree for game tree traversal and decision-making.
 
@@ -84,11 +85,12 @@ class NNMCST(MCST):
             board (List[List[BoardNode]]): 2D list representing the current state of the board with BoardNode instances.
             training_info (List[str]): list of strings representing boardstates in previous turns.
             white_board (str): A string representing the entire board being of the value held by the white player
-            black_board (str): A string representing the entire board being of the value held by the black player
+            black_board (str): A string representing the entire board being of the value held by the black board
             iterations (int): Number of iterations for Monte Carlo Tree Search.
             turn_person (Tuple[Player, Player]): Tuple of two Player instances representing the current and not current player.
             nn: neural net to be used to improve the MCST.
             turnnum (int): the turn number
+            training (bool): if True, Dirichlet noise is added to root priors for exploration (self-play only).
 
         Attributes:
             board: 2D list representing the current state of the board with BoardNode instances.
@@ -105,6 +107,7 @@ class NNMCST(MCST):
             nn: neural net to be used
             nn_bad: copy of neural net, or a more outdated version.
             temp: temperature to be used by some functions. Either 1 or 0.1
+            training: whether to apply Dirichlet noise to root priors.
         """
 
         self.board = board
@@ -123,6 +126,7 @@ class NNMCST(MCST):
                                            placement_location=("Root", -1, -1))
         self.neural_net_inst = nn
         self.turn_num = turnnum
+        self.training = training
         if turnnum <= 30:
             self.temp = 1
         else:
@@ -189,14 +193,39 @@ class NNMCST(MCST):
     def run_mcst(self) -> Tuple[int, List[float]]:
         """
         Run the Monte Carlo Search Tree (MCST) algorithm.
-        Returns:
-            bool: True if the internal pieces should be counted as dead, False otherwise.
+        Returns the chosen move index, output policy vector, and training input.
+
+        Dirichlet noise is added to the root's child priors after the first
+        iteration populates them, matching AlphaGo Zero's exploration policy:
+            p_noisy = (1 - epsilon) * p_network + epsilon * eta
+        where eta ~ Dirichlet(alpha). alpha scales with board size so smaller
+        boards get proportionally more noise (fewer legal moves).
         """
+        _DIRICHLET_EPSILON = 0.25
+        # alpha = 0.03 is AGZ's value for 19x19; scale up for smaller boards
+        _DIRICHLET_ALPHA   = 0.03 * (19 * 19) / (_BOARD * _BOARD)
+
         nn_input_backup = self.nn_input_generation(self.root, training=True)
+        noise_applied = False
+
         for idx in range(self.iteration_number):
             selected_node = self.select(self.root, idx)
             value_output = self.expand(selected_node, idx)
             self.backpropagate(selected_node, value_output)
+
+            # inject Dirichlet noise into root child priors on the first iteration
+            # that actually produces children — self-play training only
+            if not noise_applied and self.training and self.root.children:
+                import numpy as np
+                n = len(self.root.children)
+                noise = np.random.dirichlet([_DIRICHLET_ALPHA] * n)
+                for child, eta in zip(self.root.children, noise):
+                    child.prior_probability = (
+                        (1 - _DIRICHLET_EPSILON) * child.prior_probability
+                        + _DIRICHLET_EPSILON * float(eta)
+                    )
+                noise_applied = True
+
         output_chances = self.get_choice_info()
         choice_weights = self.get_deep_info()
         the_range = list(range(_MOVES))
@@ -224,7 +253,10 @@ class NNMCST(MCST):
             location = [the_range[randrange(len(the_range))]]
         else:
             location = choices(the_range, weights=choice_weights, k=1)
-        return location[0], output_chances, nn_input_backup
+        # root.mean_value_v is the average value from the current player's perspective
+        # used by neuralnetboard for resignation decisions
+        root_value = self.root.mean_value_v
+        return location[0], output_chances, nn_input_backup, root_value
 
     def get_choice_info(self) -> List[float]:
         '''Returns a list representing the number of times each location was chosen by the MCST.'''

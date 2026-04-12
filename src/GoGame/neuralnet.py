@@ -48,25 +48,25 @@ def nn_model(board_size: int = _BOARD):
 
 
 def nn_model_conv_layer(input_array):
-    conv1    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same')(input_array)
-    b_norm_1 = keras.layers.BatchNormalization()(conv1)
+    conv1    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same', data_format='channels_first')(input_array)
+    b_norm_1 = keras.layers.BatchNormalization(axis=1)(conv1)
     return keras.layers.ReLU()(b_norm_1)
 
 
 def nn_model_res_layer(input_array):
-    conv1    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same')(input_array)
-    b_norm_1 = keras.layers.BatchNormalization()(conv1)
+    conv1    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same', data_format='channels_first')(input_array)
+    b_norm_1 = keras.layers.BatchNormalization(axis=1)(conv1)
     relu_1   = keras.layers.ReLU()(b_norm_1)
-    conv2    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same')(relu_1)
-    b_norm_2 = keras.layers.BatchNormalization()(conv2)
+    conv2    = keras.layers.Conv2D(256, (3, 3), strides=(1, 1), padding='same', data_format='channels_first')(relu_1)
+    b_norm_2 = keras.layers.BatchNormalization(axis=1)(conv2)
     added    = keras.layers.Add()([input_array, b_norm_2])
     return keras.layers.ReLU()(added)
 
 
 def nn_model_policy_head(input_array, moves: int = _MOVES):
     """Policy head: outputs softmax over all board moves + pass."""
-    conv1    = keras.layers.Conv2D(2, (1, 1), strides=(1, 1), padding='same')(input_array)
-    b_norm_1 = keras.layers.BatchNormalization()(conv1)
+    conv1    = keras.layers.Conv2D(2, (1, 1), strides=(1, 1), padding='same', data_format='channels_first')(input_array)
+    b_norm_1 = keras.layers.BatchNormalization(axis=1)(conv1)
     relu_1   = keras.layers.ReLU()(b_norm_1)
     flatten  = keras.layers.Flatten()(relu_1)
     dense    = keras.layers.Dense(moves)(flatten)
@@ -74,8 +74,8 @@ def nn_model_policy_head(input_array, moves: int = _MOVES):
 
 
 def nn_model_value_head(input_array):
-    conv1    = keras.layers.Conv2D(1, (1, 1), strides=(1, 1), padding='same')(input_array)
-    b_norm_1 = keras.layers.BatchNormalization()(conv1)
+    conv1    = keras.layers.Conv2D(1, (1, 1), strides=(1, 1), padding='same', data_format='channels_first')(input_array)
+    b_norm_1 = keras.layers.BatchNormalization(axis=1)(conv1)
     relu_1   = keras.layers.ReLU()(b_norm_1)
     flatten  = keras.layers.Flatten()(relu_1)
     dense1   = keras.layers.Dense(256)(flatten)
@@ -293,8 +293,8 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
 
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    # cap sample size to avoid OOM on large datasets
-    sample_size = min(max(size_of_batch, len(dataset) // 4), 2000)
+    # sample a quarter of the dataset per epoch — grows with dataset, no hard cap
+    sample_size = max(size_of_batch, len(dataset) // 4)
 
     # compile once outside the loop
     model.compile(
@@ -370,7 +370,8 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
     model       = nn_model()
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    sample_size = min(max(size_of_batch, len(dataset) // 4), 2000)
+    # sample a quarter of the dataset per epoch — grows with dataset, no hard cap
+    sample_size = max(size_of_batch, len(dataset) // 4)
 
     # compile once outside the loop
     model.compile(
