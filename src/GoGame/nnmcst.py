@@ -153,7 +153,10 @@ class NNMCST(MCST):
         return current_best_child
 
     def get_UCB_score(self, child: NNMCSTNode) -> float:
-        '''Calculate the Upper Confidence Bound (UCB) score for a given child node, and returns it as a float.'''
+        '''Calculate the Upper Confidence Bound (UCB) score for a given child node.
+        child.mean_value_v is stored from the CHILD's player perspective (opponent of parent).
+        We negate it so the parent always selects the child that is best from the parent's
+        own perspective — i.e. worst for the opponent. This is the standard negamax convention.'''
         explor_weight = 1.4
         t_node = child
         if t_node.parent:
@@ -165,7 +168,7 @@ class NNMCST(MCST):
         penalty_term_inner_upper = math.sqrt(penalty_term_inner_upper)
         penalty_term_inner = penalty_term_inner_upper / (1 + child.number_times_chosen)
         penalty_term = explor_weight * child.prior_probability * penalty_term_inner
-        ucb_value = child.mean_value_v + penalty_term
+        ucb_value = -child.mean_value_v + penalty_term  # negate: child stores value from child's perspective
         return ucb_value
 
     def get_deep_score(self, child: NNMCSTNode) -> float:
@@ -182,13 +185,18 @@ class NNMCST(MCST):
         upper_value = math.pow(child.number_times_chosen, (1 / self.temp))
         return (upper_value / lower_value)
 
-    def backpropagate(self, node: NNMCSTNode, value_output: int) -> None:
-        '''Backpropagates the result of a simulation through the tree.'''
+    def backpropagate(self, node: NNMCSTNode, value_output: float) -> None:
+        '''Backpropagates the result of a simulation through the tree.
+        Value is negated at each level because the perspective alternates:
+        a good position for the current player is bad for the parent (opponent).
+        This is the standard negamax backpropagation used in AlphaGo Zero.'''
+        current_value = value_output
         while node is not None:
             node.number_times_chosen += 1
-            node.total_v_children += value_output
+            node.total_v_children += current_value
             node.mean_value_v = node.total_v_children / node.number_times_chosen
             node = node.parent
+            current_value = -current_value  # flip perspective for parent
 
     def run_mcst(self) -> Tuple[int, List[float]]:
         """
@@ -395,9 +403,12 @@ class NNMCST(MCST):
         if selected_move == "Pass":
             if "Pass" not in node.move_choices.keys():
                 node.switch_player()
-                temp = self.make_board_string()
+                # board_list: List[str] format for reload_board_string (board state restoration)
+                # history_str: GoBoard str format for ai_training_info_node (NN input)
+                board_list = self.make_board_string()
+                history_str = self.nn_history_board_string(node)
                 temp_train_info = list(node.ai_training_info_node)
-                temp_train_info.append(temp)
+                temp_train_info.append(history_str)
                 child_node = NNMCSTNode((node.whose_turn, node.not_whose_turn), temp_train_info, prob,
                                         original_board, node.child_killed_last,
                                         ("Pass", idx, node.not_whose_turn.color), parent=node)
@@ -410,9 +421,12 @@ class NNMCST(MCST):
 
         if f"{location_tuple}" not in node.move_choices:
             self.expand_play_move(location_tuple, node)
+            # board_list: List[str] format for reload_board_string (board state restoration)
+            # history_str: GoBoard str format for ai_training_info_node (NN input)
             board_list = self.make_board_string()
+            history_str = self.nn_history_board_string(node)
             temp_train_info = list(node.ai_training_info_node)
-            temp_train_info.append(board_list)
+            temp_train_info.append(history_str)
             child_node = NNMCSTNode((node.whose_turn, node.not_whose_turn), temp_train_info, prob,
                                     board_list, node.child_killed_last,
                                     ((location_tuple[0], location_tuple[1]), idx, node.not_whose_turn.color), parent=node)
@@ -429,6 +443,27 @@ class NNMCST(MCST):
         self.kill_stones(new_board_piece, node, testing=False)
         new_board_piece.stone_here_color = node.whose_turn.unicode
         node.switch_player()
+
+    def nn_history_board_string(self, node: NNMCSTNode) -> str:
+        '''
+        Produces a GoBoard-compatible board string for appending to ai_training_info_node.
+        Format: single str with turn prefix char + N*N cell chars ('0','1','2').
+        This mirrors GoBoard.make_board_string() and is what generate_17_length expects.
+        Must NOT use MCST.make_board_string() which returns List[str] (row-per-entry format
+        used only for board state restoration via reload_board_string).
+        '''
+        turn_char = '1' if node.whose_turn.unicode == cf.rgb_black else '2'
+        board_str = turn_char
+        for row in self.board:
+            for cell in row:
+                c = cell.stone_here_color
+                if c == cf.rgb_black:
+                    board_str += '1'
+                elif c == cf.rgb_white:
+                    board_str += '2'
+                else:
+                    board_str += '0'
+        return board_str
 
     def child_nn_info(self, node: NNMCSTNode):
         '''Generates the value and policy for a MCSTNode.

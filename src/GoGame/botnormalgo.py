@@ -196,8 +196,8 @@ class NNBotBoard(GoBoard):
             mcts = NNMCST(
                 board_copy,
                 self.ai_training_info,
-                self.ai_black_board,
                 self.ai_white_board,
+                self.ai_black_board,
                 cf.PLAY_MCTS_ITERATIONS,
                 (self.whose_turn, self.not_whose_turn),
                 self._get_nn(),
@@ -213,8 +213,8 @@ class NNBotBoard(GoBoard):
                     mcts = NNMCST(
                         board_copy,
                         self.ai_training_info,
-                        self.ai_black_board,
                         self.ai_white_board,
+                        self.ai_black_board,
                         cf.PLAY_MCTS_ITERATIONS,
                         (self.whose_turn, self.not_whose_turn),
                         self._get_nn(),
@@ -247,3 +247,17 @@ class NNBotBoard(GoBoard):
         self.preprevious_board_state = self.previous_board_state
         self.previous_board_state = self.make_board_string()[1:]
         self.switch_player()
+
+    def make_turn_info(self) -> None:
+        """Override GoBoard.make_turn_info to also record human moves in ai_training_info.
+        Without this, the AI's MCTS history only contains its own moves and is blind
+        to everything the human has played."""
+        # ensure ai_training_info exists (seeded lazily in play_turn_nn)
+        if not hasattr(self, 'ai_training_info'):
+            empty = '0' * (self.board_size * self.board_size)
+            self.ai_training_info = ['0' + empty for _ in range(10)]
+            self.ai_white_board   = empty
+            self.ai_black_board   = '1' * (self.board_size * self.board_size)
+        self.ai_training_info.append(self.make_board_string())
+        # call the parent implementation for all the normal bookkeeping
+        super().make_turn_info()

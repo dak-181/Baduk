@@ -496,6 +496,7 @@ class GoBoard():
         piece.stone_here_color = self.whose_turn.unicode
         neighboring_pieces: Set[BoardNode] = piece.connections
         truth_value: bool = False
+        self.killed_last_turn.clear()  # clear once before processing all captures
         for neighbor in neighboring_pieces:
             if neighbor.stone_here_color == self.not_whose_turn.unicode:
                 if (self_death_rule(self, neighbor, self.not_whose_turn, set()) == 0):
@@ -534,8 +535,8 @@ def self_death_rule(self, piece: BoardNode, which_player: Type['Player'], visite
 
 
 def remove_stones(self) -> None:
-    '''Removes stones marked for removal.'''
-    self.killed_last_turn.clear()
+    '''Removes stones marked for removal. Accumulates into killed_last_turn
+    so multiple groups killed in one turn are all recorded for undo.'''
     for position in self.visit_kill:
         self.killed_last_turn.add(position)
         position.stone_here_color = cf.rgb_grey

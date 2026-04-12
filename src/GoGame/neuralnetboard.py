@@ -162,7 +162,7 @@ class NNBoard(GoBoard):
             chosen_nn = self.nn if good_bot else self.nn_bad
             self.turn_nnmcst = NNMCST(
                 self.board_copy, self.ai_training_info,
-                self.ai_black_board, self.ai_white_board,
+                self.ai_white_board, self.ai_black_board,
                 cf.MCTS_ITERATIONS, (self.whose_turn, self.not_whose_turn),
                 chosen_nn, self.turn_num,
                 training=True

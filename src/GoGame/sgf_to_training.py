@@ -214,7 +214,7 @@ def _one_hot_policy(move: Optional[Tuple[int, int]], board_size: int) -> List[fl
 
 # ── Main conversion logic ─────────────────────────────────────────────────────
 
-HISTORY_DEPTH = 17   # number of board states kept in training info (mirrors self-play)
+HISTORY_DEPTH = 8    # matches nn_input_generation in nnmcst.py ([-8:] window)
 
 def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
     """
@@ -256,6 +256,10 @@ def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
 
         # build training input BEFORE placing the stone (state seen by the player)
         recent_history = history[-HISTORY_DEPTH:]
+        # reverse to newest-first, matching nn_input_generation in nnmcst.py
+        # which does history[-8:].reverse() before passing to generate_17_length.
+        # _build_17_plane_input pops from index 0, so index 0 must be the newest board.
+        recent_history = list(reversed(recent_history))
 
         # Append a color sentinel matching nn_input_generation in nnmcst.py:
         # all '1's if black to move, all '0's if white to move.
