@@ -167,10 +167,6 @@ class NNBoard(GoBoard):
                 chosen_nn, self.turn_num
             )
             val, output_chances, formatted_ai_training_info = self.turn_nnmcst.run_mcst()
-            # record whose turn it is NOW (before play_turn_bot_helper switches it)
-            # so playing_mode_end_of_game can flip the value target by perspective
-            turn_color = 1 if self.whose_turn == self.player_black else 2
-            self.ai_output_info.append((formatted_ai_training_info, output_chances, turn_color))
 
             truth_value = play_turn_bot_helper(self, truth_value, val)
             if truth_value == "Break" or truth_value == "Passed":
@@ -181,6 +177,10 @@ class NNBoard(GoBoard):
             if not truth_value:
                 attempt += 1
                 continue
+
+            # move was accepted — record training sample for this turn
+            turn_color = 1 if self.whose_turn == self.player_black else 2
+            self.ai_output_info.append((formatted_ai_training_info, output_chances, turn_color))
 
             # print board state and timing only on the successful turn
             t1 = time.time()
