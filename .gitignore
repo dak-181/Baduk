@@ -3,4 +3,5 @@
 *.sgf
 *.pkl
 *.bak
+*.jsonl
 __pycache__

@@ -1,7 +1,7 @@
 """
 sgf_to_training.py
 ==================
-Converts 19x19 SGF game files into training samples written to saved_other_play.json.
+Converts 19x19 SGF game files into training samples written to saved_other_play.jsonl.
 Run repeatedly to append more games to the same file.
 
 Each sample is a tuple of:
@@ -21,7 +21,7 @@ import sys
 from typing import List, Optional, Tuple
 
 BOARD_SIZE  = 19
-OUTPUT_PATH = 'saved_other_play.json'
+OUTPUT_PATH = 'saved_other_play.jsonl'
 
 
 # ── SGF parsing ───────────────────────────────────────────────────────────────
@@ -299,17 +299,22 @@ def sgf_to_samples(sgf_text: str) -> List[Tuple[List, List[float], float]]:
 
 def convert_sgf_dir(sgf_dir: str, verbose: bool = True) -> int:
     """
-    Convert all .sgf files in `sgf_dir` and append results to saved_other_play.json.
+    Convert all .sgf files in `sgf_dir` and append results to saved_other_play.jsonl.
+    Uses JSONL format (one sample per line) so the file is never fully loaded into
+    memory — each game's samples are written immediately after conversion.
     Always appends — run multiple times to accumulate data.
 
     Returns total number of samples now in the output file.
     """
-    existing_data = []
+    # Count existing samples without loading them
+    existing_count = 0
     if os.path.exists(OUTPUT_PATH):
         with open(OUTPUT_PATH, 'r') as f:
-            existing_data = json.load(f)
+            for line in f:
+                if line.strip():
+                    existing_count += 1
         if verbose:
-            print(f"Loaded {len(existing_data)} existing samples from {OUTPUT_PATH}")
+            print(f"Found {existing_count} existing samples in {OUTPUT_PATH}")
 
     sgf_files = []
     for root, _, files in os.walk(sgf_dir):
@@ -320,57 +325,68 @@ def convert_sgf_dir(sgf_dir: str, verbose: bool = True) -> int:
     if verbose:
         print(f"Found {len(sgf_files)} SGF file(s) in '{sgf_dir}'")
 
-    all_new_samples = []
+    new_count          = 0
     skipped_no_result  = 0
     skipped_wrong_size = 0
     skipped_error      = 0
+    WRITE_BATCH = 100  # flush to disk every N games
 
-    for i, fpath in enumerate(sgf_files):
-        try:
-            with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
-                text = f.read()
-        except Exception as e:
-            if verbose:
-                print(f"  [SKIP] {fpath}: read error — {e}")
-            skipped_error += 1
-            continue
+    # Open in append mode — stream batches of games directly to disk
+    with open(OUTPUT_PATH, 'a') as out_f:
+        batch = []
+        for i, fpath in enumerate(sgf_files):
+            try:
+                with open(fpath, 'r', encoding='utf-8', errors='replace') as f:
+                    text = f.read()
+            except Exception as e:
+                if verbose:
+                    print(f"  [SKIP] {fpath}: read error — {e}")
+                skipped_error += 1
+                continue
 
-        sz_str = _extract_property(text, 'SZ')
-        file_size = int(sz_str) if sz_str and sz_str.isdigit() else 19
-        if file_size != BOARD_SIZE:
-            skipped_wrong_size += 1
-            continue
+            sz_str = _extract_property(text, 'SZ')
+            file_size = int(sz_str) if sz_str and sz_str.isdigit() else 19
+            if file_size != BOARD_SIZE:
+                skipped_wrong_size += 1
+                continue
 
-        samples = sgf_to_samples(text)
-        if not samples:
-            skipped_no_result += 1
-            if verbose:
-                print(f"  [SKIP] {fpath}: no result or no moves")
-            continue
+            samples = sgf_to_samples(text)
+            if not samples:
+                skipped_no_result += 1
+                if verbose:
+                    print(f"  [SKIP] {fpath}: no result or no moves")
+                continue
 
-        all_new_samples.extend(samples)
-        if verbose and (i + 1) % 50 == 0:
-            print(f"  Processed {i+1}/{len(sgf_files)} files — "
-                  f"{len(all_new_samples)} new samples so far...")
+            batch.extend(samples)
+            new_count += len(samples)
 
-    combined = existing_data + all_new_samples
-    if verbose:
-        print(f"Saving {len(combined)} total samples to {OUTPUT_PATH}...")
-    with open(OUTPUT_PATH, 'w') as f:
-        json.dump(combined, f)
+            # flush batch to disk every WRITE_BATCH games
+            if (i + 1) % WRITE_BATCH == 0:
+                for sample in batch:
+                    out_f.write(json.dumps(sample) + '\n')
+                out_f.flush()
+                batch = []
+                if verbose:
+                    print(f"  Processed {i+1}/{len(sgf_files)} files — "
+                          f"{new_count} new samples written to disk...")
 
+        # flush any remaining samples
+        for sample in batch:
+            out_f.write(json.dumps(sample) + '\n')
+
+    total = existing_count + new_count
     if verbose:
         print(f"\n── Summary ──────────────────────────────────")
         print(f"  SGF files found:        {len(sgf_files)}")
         print(f"  Skipped (wrong size):   {skipped_wrong_size}")
         print(f"  Skipped (no result):    {skipped_no_result}")
         print(f"  Skipped (read error):   {skipped_error}")
-        print(f"  New samples generated:  {len(all_new_samples)}")
-        print(f"  Existing samples kept:  {len(existing_data)}")
-        print(f"  Total in output:        {len(combined)}")
+        print(f"  New samples written:    {new_count}")
+        print(f"  Existing samples kept:  {existing_count}")
+        print(f"  Total in output:        {total}")
         print(f"  Output written to:      {OUTPUT_PATH}")
 
-    return len(combined)
+    return total
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

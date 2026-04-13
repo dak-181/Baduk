@@ -115,7 +115,7 @@ def _run_ai_training():
     Runs AI training in a separate process for instant cancellation.
     """
     import os
-    if not os.path.exists("saved_self_play.json"):
+    if not os.path.exists("saved_self_play.jsonl"):
         import GoGame.pygame_ui as pg_ui
         pg_ui.popup("No training data found.\nRun 'AI Self Play' first.", title="AI Training")
         return
@@ -131,13 +131,13 @@ def _run_ai_training():
     )
     p.start()
     _progress_screen_process(p, log_list, title="AI Training",
-                             hint="Training on self-play data  •  Esc to cancel")
+                             hint="Training on self-play data  •  Epochs auto-calculated for 90% coverage  •  Esc to cancel")
 
 
 def _run_import_sgf():
     """
     Converts all SGF files in the project-root 'sgf/' folder into
-    saved_other_play.json training data using sgf_to_training.py.
+    saved_other_play.jsonl training data using sgf_to_training.py.
     """
     import os
 
@@ -213,10 +213,10 @@ def _import_sgf_worker(sgf_dir, log_list, game_counter):
 
 def _run_sgf_training():
     """
-    Trains a model on saved_other_play.json in a separate process for instant cancellation.
+    Trains a model on saved_other_play.jsonl in a separate process for instant cancellation.
     """
     import os
-    if not os.path.exists("saved_other_play.json"):
+    if not os.path.exists("saved_other_play.jsonl"):
         import GoGame.pygame_ui as pg_ui
         pg_ui.popup("No SGF training data found.\nRun 'Import SGF Files' first.", title="SGF Training")
         return
@@ -232,7 +232,7 @@ def _run_sgf_training():
     )
     p.start()
     _progress_screen_process(p, log_list, title="SGF Training",
-                             hint="Training on SGF game data  •  Esc to cancel")
+                             hint="Training on SGF data  •  Epochs auto-calculated for 90% coverage  •  Esc to cancel")
 
 
 def _training_worker(log_list):
@@ -250,7 +250,7 @@ def _training_worker(log_list):
     sys.stdout = _Log(log_list)
     try:
         from GoGame.neuralnet import loading_file_for_training
-        loading_file_for_training(epochs=10, size_of_batch=32)
+        loading_file_for_training(size_of_batch=32)
     except Exception as e:
         log_list.append(f"ERROR: {e}")
     finally:
@@ -272,7 +272,8 @@ def _sgf_training_worker(log_list):
     sys.stdout = _Log(log_list)
     try:
         from GoGame.neuralnet import loading_file_for_training_other
-        loading_file_for_training_other(epochs=10, size_of_batch=32)
+        # epochs are auto-calculated inside to achieve 90% dataset coverage
+        loading_file_for_training_other(size_of_batch=32)
     except Exception as e:
         log_list.append(f"ERROR: {e}")
     finally:

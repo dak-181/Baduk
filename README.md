@@ -103,13 +103,13 @@ Generates training data by having the neural network play against itself.
 1. Click **AI SelfPlay**
 2. Enter the number of games to play (default: 5)
 3. Progress is shown on screen — press **Escape** to stop immediately
-4. Data is saved to `saved_self_play.json` and can be used with **AI Training**
+4. Data is saved to `saved_self_play.jsonl` and can be used with **AI Training**
 
 ### AI Training
 
 Trains the main neural network model on self-play data.
 
-1. Run **AI SelfPlay** first to generate `saved_self_play.json`
+1. Run **AI SelfPlay** first to generate `saved_self_play.jsonl`
 2. Click **AI Training**
 3. Press **Escape** to stop immediately at any point
 4. Weights are saved to `model.weights.h5`
@@ -122,13 +122,13 @@ Converts existing SGF game records into training data for the neural network.
 2. Place your `.sgf` files inside it (subfolders are searched recursively)
 3. Click **Import SGF Files** from the main menu
 4. Only 19×19 games with a recorded result are converted
-5. Data is saved to `saved_other_play.json`
+5. Data is saved to `saved_other_play.jsonl`
 
 ### Train SGF Model
 
 Trains a separate neural network model on SGF-imported data, completely independent of the self-play model.
 
-1. Run **Import SGF Files** first to generate `saved_other_play.json`
+1. Run **Import SGF Files** first to generate `saved_other_play.jsonl`
 2. Click **Train SGF Model**
 3. Press **Escape** to stop immediately at any point
 4. Weights are saved to `other_play.weights.h5` (rename this after creation to save multiple models i.e. shusaku.weights.h5)
@@ -138,7 +138,7 @@ Trains a separate neural network model on SGF-imported data, completely independ
 
 ## AI Configuration
 
-Two settings in `src/GoGame/config.py` control the AI:
+Three settings in `src/GoGame/config.py` control the AI:
 
 ```python
 AI_BOARD_SIZE   = 19   # 9, 13, or 19
@@ -180,6 +180,6 @@ pklfiles/                       ← saved games
 sgf/                            ← place SGF files here for import
 model.weights.h5                ← self-play model weights
 other_play.weights.h5           ← SGF-trained model weights
-saved_self_play.json            ← self-play training data
-saved_other_play.json           ← SGF training data
+saved_self_play.jsonl           ← self-play training data
+saved_other_play.jsonl          ← SGF training data
 ```

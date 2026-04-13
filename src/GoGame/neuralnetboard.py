@@ -85,17 +85,10 @@ class NNBoard(GoBoard):
         return self.playing_mode_end_of_game()
 
     def playing_mode_end_of_game(self) -> bool:
-        """Score the game and save training data to saved_self_play.json."""
+        """Score the game and save training data to saved_self_play.jsonl."""
         winner = self.making_score_board_object()
         print(f"winner is {winner}")
         import json
-
-        file_name = 'saved_self_play.json'
-        try:
-            with open(file_name, "r") as fn2:
-                existing_data = json.load(fn2)
-        except FileNotFoundError:
-            existing_data = []
 
         def perspective_value(winner: int, turn_color: int) -> float:
             """Return +1.0 if the player to move won, -1.0 if they lost.
@@ -106,12 +99,11 @@ class NNBoard(GoBoard):
             black_to_move = (turn_color == 1)
             return 1.0 if (black_won == black_to_move) else -1.0
 
-        new_data = [
-            (item[0], item[1], perspective_value(int(winner), item[2]))
-            for item in self.ai_output_info
-        ]
-        with open(file_name, "w") as fn2:
-            json.dump(existing_data + new_data, fn2)
+        # Stream-append one line per sample — never loads the full file into memory
+        with open('saved_self_play.jsonl', 'a') as fn2:
+            for item in self.ai_output_info:
+                sample = (item[0], item[1], perspective_value(int(winner), item[2]))
+                fn2.write(json.dumps(sample) + '\n')
 
         return winner
 

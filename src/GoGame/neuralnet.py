@@ -109,14 +109,14 @@ def training_cycle_process(length: int, log_list, game_counter):
 
     total = time.time() - start_time
     log(f"Self-play complete: {sum_val}/{length} black wins in {total:.1f}s")
-    log("Training data saved to saved_self_play.json")
+    log("Training data saved to saved_self_play.jsonl")
     log("Run 'AI Training' to train the model on this data.")
 
 
 def training_cycle(length: int, state: Optional[dict] = None):
     """
     Plays `length` self-play games to generate training data.
-    Saves results to saved_self_play.json after each game.
+    Saves results to saved_self_play.jsonl after each game.
 
     state: optional dict shared with the UI thread for progress reporting.
            Keys used: 'log' (list of str), 'game' (int), 'cancelled' (bool).
@@ -149,7 +149,7 @@ def training_cycle(length: int, state: Optional[dict] = None):
 
     total = time.time() - start_time
     log(f"Self-play complete: {sum_val}/{length} black wins in {total:.1f}s")
-    log("Training data saved to saved_self_play.json")
+    log("Training data saved to saved_self_play.jsonl")
     log("Run 'AI Training' to train the model on this data.")
 
 
@@ -250,12 +250,13 @@ def nn_model_from_file(weights_path: str, board_size: int = _BOARD):
     return model
 
 
-def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
+def loading_file_for_training_other(size_of_batch: int = 32,
                                      state: Optional[dict] = None,
                                      log_fn=None):
     """
-    Trains a fresh model on saved_other_play.json (SGF-converted games)
-    and saves the result to other_play.weights.h5.
+    Trains a model on saved_other_play.jsonl (SGF-converted games) using streaming
+    reservoir sampling — the full dataset is never loaded into memory at once.
+    Saves the result to other_play.weights.h5.
     Deliberately does NOT load or overwrite model.weights.h5.
     """
     import json, random, os
@@ -267,18 +268,23 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
         elif state is not None:
             state.setdefault("log", []).append(msg)
 
-    if not os.path.exists("saved_other_play.json"):
+    jsonl_path = "saved_other_play.jsonl"
+    if not os.path.exists(jsonl_path):
         log("No SGF training data found. Run the SGF converter first.")
         return
 
-    with open("saved_other_play.json", "r") as jfile:
-        dataset = json.load(jfile)
+    # Count total samples by streaming (no full load)
+    total_samples = 0
+    with open(jsonl_path, 'r') as f:
+        for line in f:
+            if line.strip():
+                total_samples += 1
 
-    if len(dataset) < size_of_batch:
-        log(f"Not enough data ({len(dataset)} samples). Convert more SGF files.")
+    if total_samples < size_of_batch:
+        log(f"Not enough data ({total_samples} samples). Convert more SGF files.")
         return
 
-    log(f"Loaded {len(dataset)} SGF training samples.")
+    log(f"Found {total_samples} SGF training samples (streaming).")
 
     # enable GPU memory growth in this worker process
     import tensorflow as tf
@@ -288,15 +294,25 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
     except RuntimeError:
         pass
 
-    # Load existing weights if available, otherwise start fresh
     model = nn_model_from_file("other_play.weights.h5")
 
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    # sample a quarter of the dataset per epoch — grows with dataset, no hard cap
-    sample_size = max(size_of_batch, len(dataset) // 4)
+    sample_size = min(100_000, max(size_of_batch, total_samples // 4))
 
-    # compile once outside the loop
+    # Auto-calculate epochs so at least 90% of the dataset is seen.
+    # From: 1 - (1 - sample_size/total)^epochs >= 0.90
+    # Solving: epochs >= log(0.10) / log(1 - sample_size/total)
+    import math
+    coverage_fraction = sample_size / total_samples
+    if coverage_fraction >= 1.0:
+        epochs = 1
+    else:
+        epochs = math.ceil(math.log(0.10) / math.log(1 - coverage_fraction))
+    epochs = max(epochs, 1)
+    log(f"Auto-calculated {epochs} epochs for ~90% dataset coverage "
+        f"({sample_size:,} samples/epoch over {total_samples:,} total).")
+
     model.compile(
         optimizer='adam',
         loss={'dense_2': value_loss, 'softmax': policy_loss},
@@ -304,32 +320,50 @@ def loading_file_for_training_other(epochs: int = 10, size_of_batch: int = 32,
     )
 
     for epoch in range(epochs):
-        selected = random.sample(dataset, min(sample_size, len(dataset)))
-        inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
+        # Reservoir sampling: stream through file once, keep sample_size items.
+        # Memory usage = O(sample_size), not O(total_samples).
+        reservoir = []
+        with open(jsonl_path, 'r') as f:
+            for i, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                sample = json.loads(line)
+                if len(reservoir) < sample_size:
+                    reservoir.append(sample)
+                else:
+                    j = random.randint(0, i)
+                    if j < sample_size:
+                        reservoir[j] = sample
+
+        random.shuffle(reservoir)
+        inputs  = np.array([np.asarray(s[0], dtype=np.float32) for s in reservoir])
         if inputs.ndim == 2:
             inputs = inputs.reshape(-1, 17, _BOARD, _BOARD)
-        outputs  = {
-            'dense_2': np.array([s[2] for s in selected]),
-            'softmax': np.array([s[1] for s in selected])
+        outputs = {
+            'dense_2': np.array([s[2] for s in reservoir]),
+            'softmax': np.array([s[1] for s in reservoir])
         }
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
         log(f"Epoch {epoch+1}/{epochs} complete.")
+        del reservoir  # free memory before next epoch
 
     model.save_weights("other_play.weights.h5")
     log("Weights saved to other_play.weights.h5")
 
 
-def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
+def loading_file_for_training(size_of_batch: int = 32,
                                state: Optional[dict] = None,
                                log_fn=None,
                                run_evaluation: bool = False,
                                eval_games: int = 20):
     """
-    Trains the model on self-play data from saved_self_play.json and saves
-    the updated weights immediately.
+    Trains the model on self-play data from saved_self_play.jsonl using streaming
+    reservoir sampling — the full dataset is never loaded into memory at once.
+    Epochs are auto-calculated to achieve ~90% dataset coverage.
+    Saves updated weights to model.weights.h5.
 
     Parameters:
-        epochs:         number of training epochs (default 10)
         size_of_batch:  minibatch size (default 32)
         state:          optional progress dict shared with the UI thread
         log_fn:         optional callable for logging (used by process workers)
@@ -337,7 +371,7 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
                         improvement before saving. Off by default.
         eval_games:     number of evaluation games when run_evaluation=True
     """
-    import json, random, os
+    import json, random, os, math
 
     def log(msg: str):
         print(msg)
@@ -346,18 +380,23 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
         elif state is not None:
             state.setdefault("log", []).append(msg)
 
-    if not os.path.exists("saved_self_play.json"):
+    jsonl_path = "saved_self_play.jsonl"
+    if not os.path.exists(jsonl_path):
         log("No training data found. Run 'AI Self Play' first.")
         return
 
-    with open("saved_self_play.json", "r") as jfile:
-        dataset = json.load(jfile)
+    # Count total samples by streaming (no full load)
+    total_samples = 0
+    with open(jsonl_path, 'r') as f:
+        for line in f:
+            if line.strip():
+                total_samples += 1
 
-    if len(dataset) < size_of_batch:
-        log(f"Not enough data ({len(dataset)} samples). Run more self-play games.")
+    if total_samples < size_of_batch:
+        log(f"Not enough data ({total_samples} samples). Run more self-play games.")
         return
 
-    log(f"Loaded {len(dataset)} training samples.")
+    log(f"Found {total_samples} self-play training samples (streaming).")
 
     # enable GPU memory growth in this worker process
     import tensorflow as tf
@@ -370,10 +409,18 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
     model       = nn_model()
     value_loss  = keras.losses.MeanSquaredError()
     policy_loss = keras.losses.CategoricalCrossentropy()
-    # sample a quarter of the dataset per epoch — grows with dataset, no hard cap
-    sample_size = max(size_of_batch, len(dataset) // 4)
+    sample_size = min(100_000, max(size_of_batch, total_samples // 4))
 
-    # compile once outside the loop
+    # Auto-calculate epochs for ~90% dataset coverage
+    coverage_fraction = sample_size / total_samples
+    if coverage_fraction >= 1.0:
+        epochs = 1
+    else:
+        epochs = math.ceil(math.log(0.10) / math.log(1 - coverage_fraction))
+    epochs = max(epochs, 1)
+    log(f"Auto-calculated {epochs} epochs for ~90% dataset coverage "
+        f"({sample_size:,} samples/epoch over {total_samples:,} total).")
+
     model.compile(
         optimizer='adam',
         loss={'dense_2': value_loss, 'softmax': policy_loss},
@@ -381,16 +428,32 @@ def loading_file_for_training(epochs: int = 10, size_of_batch: int = 32,
     )
 
     for epoch in range(epochs):
-        selected = random.sample(dataset, min(sample_size, len(dataset)))
-        inputs   = np.array([np.asarray(s[0], dtype=np.float32) for s in selected])
+        # Reservoir sampling: stream through file once, keep sample_size items
+        reservoir = []
+        with open(jsonl_path, 'r') as f:
+            for i, line in enumerate(f):
+                line = line.strip()
+                if not line:
+                    continue
+                sample = json.loads(line)
+                if len(reservoir) < sample_size:
+                    reservoir.append(sample)
+                else:
+                    j = random.randint(0, i)
+                    if j < sample_size:
+                        reservoir[j] = sample
+
+        random.shuffle(reservoir)
+        inputs  = np.array([np.asarray(s[0], dtype=np.float32) for s in reservoir])
         if inputs.ndim == 2:
             inputs = inputs.reshape(-1, 17, _BOARD, _BOARD)
-        outputs  = {
-            'dense_2': np.array([s[2] for s in selected]),
-            'softmax': np.array([s[1] for s in selected])
+        outputs = {
+            'dense_2': np.array([s[2] for s in reservoir]),
+            'softmax': np.array([s[1] for s in reservoir])
         }
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
         log(f"Epoch {epoch+1}/{epochs} complete.")
+        del reservoir  # free memory before next epoch
 
     # ── optional evaluation ───────────────────────────────────────────────
     if run_evaluation:
