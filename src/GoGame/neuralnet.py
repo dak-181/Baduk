@@ -344,9 +344,10 @@ def loading_file_for_training_other(size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in reservoir]),
             'softmax': np.array([s[1] for s in reservoir])
         }
+        del reservoir  # free ~20GB of boxed Python floats before numpy arrays are trained on
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
+        del inputs, outputs  # free numpy arrays before next epoch's reservoir is built
         log(f"Epoch {epoch+1}/{epochs} complete.")
-        del reservoir  # free memory before next epoch
 
     model.save_weights("other_play.weights.h5")
     log("Weights saved to other_play.weights.h5")
@@ -451,9 +452,10 @@ def loading_file_for_training(size_of_batch: int = 32,
             'dense_2': np.array([s[2] for s in reservoir]),
             'softmax': np.array([s[1] for s in reservoir])
         }
+        del reservoir  # free ~20GB of boxed Python floats before numpy arrays are trained on
         model.fit(inputs, outputs, epochs=1, batch_size=size_of_batch, verbose=0)
+        del inputs, outputs  # free numpy arrays before next epoch's reservoir is built
         log(f"Epoch {epoch+1}/{epochs} complete.")
-        del reservoir  # free memory before next epoch
 
     # ── optional evaluation ───────────────────────────────────────────────
     if run_evaluation:
