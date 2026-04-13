@@ -1,0 +1,11 @@
+# Release build dependencies (Windows only)
+# Used when building the distributable exe with: pyinstaller baduk.spec
+#
+# Uses tensorflow-cpu instead of tensorflow to avoid bundling CUDA DLLs.
+# CPU inference at 25 MCTS iterations is fast enough for comfortable play.
+# Do NOT use this file for development or training — use requirements.txt instead.
+
+pygame>=2.6.0
+tensorflow-cpu>=2.16.0
+numpy>=1.26.0
+pyinstaller>=6.0.0

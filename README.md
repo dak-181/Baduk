@@ -15,7 +15,7 @@ Originally forked from [EGPeat/GoGame](https://github.com/EGPeat/GoGame) and mod
 - Keras 
 - CUDA
 
-GPU recommended — tested on RTX 3090 Ti via WSL2 + CUDA 12.3 and TensorFlow 2.16. You should configure the proper version of CUDA and TensorFlow for your GPU
+GPU recommended — tested on RTX 3090 Ti via WSL2 + CUDA 12.3 and TensorFlow 2.16. You should configure the proper version of CUDA and TensorFlow for your GPU.
 
 Install dependencies:
 
@@ -141,13 +141,58 @@ Trains a separate neural network model on SGF-imported data, completely independ
 Three settings in `src/GoGame/config.py` control the AI:
 
 ```python
-AI_BOARD_SIZE   = 19   # 9, 13, or 19
-MCTS_ITERATIONS = 200   # Used during self-play training
-PLAY_MCTS_ITERATIONS = 25   # used when playing against a human
+AI_BOARD_SIZE        = 19   # 9, 13, or 19
+MCTS_ITERATIONS      = 200  # Used during self-play training
+PLAY_MCTS_ITERATIONS = 25   # Used when playing against a human
 ```
+
 Iterations: 25 = fast/weak · 200 = strong · 800 = very strong/slow.
 
 > **Note:** Changing `AI_BOARD_SIZE` requires deleting any existing `.h5` weight files since the model architecture changes with board size.
+
+---
+
+## Building a Distributable Release
+
+The release build produces a self-contained Windows folder (`dist\Baduk\`) that users can run without installing Python or any dependencies. The AI training, self-play, SGF import, and SGF training options are hidden in release builds — users can play human vs human or human vs a bundled AI model.
+
+> **Important:** The build must be run from **Windows PowerShell or Command Prompt**, not from WSL2. PyInstaller always targets the OS it runs on — a WSL2 build produces a Linux binary, not a Windows exe.
+
+### 1. Prepare the build environment
+
+In Windows PowerShell:
+
+```powershell
+python -m venv venv_release
+venv_release\Scripts\activate
+pip install -r requirements-release.txt
+```
+
+### 2. Configure for release
+
+In `src/GoGame/config.py`, set:
+
+```python
+RELEASE_MODE = True
+```
+
+### 3. Add model files (optional)
+
+Copy any `.h5` weight files you want to ship into the project root (next to `run.py`). The build will automatically include every `*.h5` file it finds there. They can also be added to `dist\Baduk\` manually after building without a rebuild.
+
+### 4. Build
+
+From the project root:
+
+```powershell
+pyinstaller baduk.spec
+```
+
+### 5. Distribute
+
+The output is `dist\Baduk\` — zip the folder and distribute. Users extract it anywhere and double-click `Baduk.exe`. No installation required.
+
+> **Note:** Set `RELEASE_MODE = False` again in `config.py` after building to restore the full menu for development.
 
 ---
 
@@ -155,9 +200,10 @@ Iterations: 25 = fast/weak · 200 = strong · 800 = very strong/slow.
 
 ```
 run.py                          ← entry point
+baduk.spec                      ← PyInstaller release build spec
 src/GoGame/
     main.py                     ← main menu loop
-    config.py                   ← colours, AI board size, MCTS iterations
+    config.py                   ← colours, AI board size, MCTS iterations, release mode
     goclasses.py                ← GoBoard, game logic
     uifunctions.py              ← pygame rendering and window layout
     pygame_ui.py                ← popup/dialog system
