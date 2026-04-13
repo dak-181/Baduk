@@ -73,6 +73,14 @@ class NNBotBoard(GoBoard):
         self.weights_path = weights_path
         self._nn_model = None   # lazy-loaded on first bot turn
 
+        # Initialise history here so GoBoard.make_turn_info can record the
+        # human's very first move — if we wait until play_turn_nn to seed this,
+        # the lazy init happens after turn 0 and the NN never sees the first stone.
+        empty = '0' * (self.board_size * self.board_size)
+        self.ai_training_info = ['0' + empty for _ in range(10)]
+        self.ai_white_board   = empty
+        self.ai_black_board   = '1' * (self.board_size * self.board_size)
+
     def _get_nn(self):
         if self._nn_model is None:
             # TF model construction and weight loading can take several seconds.
@@ -172,13 +180,6 @@ class NNBotBoard(GoBoard):
         import GoGame.config as cf
 
         ui.update_scoring(self)
-
-        # seed training-info history if not already present
-        if not hasattr(self, 'ai_training_info'):
-            empty = '0' * (self.board_size * self.board_size)
-            self.ai_training_info = ['0' + empty for _ in range(10)]
-            self.ai_white_board   = empty
-            self.ai_black_board   = '1' * (self.board_size * self.board_size)
 
         MAX_ATTEMPTS = 10
         MAX_FIRSTLINE_RETRIES = 5
