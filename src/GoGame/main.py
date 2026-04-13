@@ -156,7 +156,11 @@ def _run_import_sgf():
             title="Import SGF Files")
         return
 
-    sgf_files = [f for f in os.listdir(sgf_dir) if f.lower().endswith('.sgf')]
+    sgf_files = []
+    for root, _, files in os.walk(sgf_dir):
+        for fname in files:
+            if fname.lower().endswith('.sgf'):
+                sgf_files.append(fname)
     if not sgf_files:
         import GoGame.pygame_ui as pg_ui
         pg_ui.popup(f"No .sgf files found in:\n{sgf_dir}", title="Import SGF Files")
