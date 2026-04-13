@@ -63,6 +63,18 @@ def undo_special_cases(board: GoBoard) -> bool:
             board.mode = "Playing"
         return True
 
+    if last_entry == "Dead Removed":
+        # finalize_dead_stones() set these stones to grey and stored original colours
+        # in killed_log — restore them and roll back the turn counter.
+        board.position_played_log.pop()
+        revive = board.killed_log.pop()
+        for unicode, row, col, _ in revive:
+            board.board[row][col].stone_here_color = unicode
+        board.turn_num -= 1
+        import GoGame.uifunctions as _ui
+        _ui.refresh_board_pygame(board)
+        return True
+
     if last_entry[0] in {"Passed", "Scoring Passed"}:
         board.position_played_log.pop()
         move_back(board)

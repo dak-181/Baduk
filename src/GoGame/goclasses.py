@@ -427,6 +427,10 @@ class GoBoard():
         self.killed_log.append(temp_list)
         self.preprevious_board_state = self.previous_board_state
         self.previous_board_state = self.make_board_string()[1:]
+        # keep ai_training_info in sync when human moves are made on an NNBotBoard,
+        # so the neural net always receives a complete consecutive board history
+        if hasattr(self, 'ai_training_info'):
+            self.ai_training_info.append(self.make_board_string())
         self.switch_player()
 
     def play_piece(self, row: int, col: int) -> bool:
