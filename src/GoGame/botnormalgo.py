@@ -122,7 +122,6 @@ class NNBotBoard(GoBoard):
             self._pre_overlay_surface = None
 
     def playing_mode_end_of_game(self) -> bool:
-        ui.scoring_mode_popup()
         return self.scoring_block()
 
     def play_game_playing_mode(self, from_file, fixes_handicap) -> bool:
@@ -143,9 +142,26 @@ class NNBotBoard(GoBoard):
         return self.playing_mode_end_of_game()
 
     def turn_loop(self) -> None:
+        consecutive_human_passes = 0
         while self.times_passed <= 1:
             if self.whose_turn == self.player_black:
+                passes_before = self.times_passed
                 self.play_turn()
+                # detect if human just passed
+                if self.times_passed > passes_before:
+                    consecutive_human_passes += 1
+                else:
+                    consecutive_human_passes = 0
+                # force AI to pass if human has passed 3 times in a row
+                if consecutive_human_passes >= 3 and self.times_passed <= 1:
+                    self.times_passed += 1
+                    self.turn_num += 1
+                    self.position_played_log.append(("Pass", -3, -3))
+                    self.killed_log.append([])
+                    self.preprevious_board_state = self.previous_board_state
+                    self.previous_board_state = self.make_board_string()[1:]
+                    self.switch_player()
+                    ui.def_popup("AI passes.", 2)
             else:
                 self.play_turn_nn()
 
@@ -247,17 +263,3 @@ class NNBotBoard(GoBoard):
         self.preprevious_board_state = self.previous_board_state
         self.previous_board_state = self.make_board_string()[1:]
         self.switch_player()
-
-    def make_turn_info(self) -> None:
-        """Override GoBoard.make_turn_info to also record human moves in ai_training_info.
-        Without this, the AI's MCTS history only contains its own moves and is blind
-        to everything the human has played."""
-        # ensure ai_training_info exists (seeded lazily in play_turn_nn)
-        if not hasattr(self, 'ai_training_info'):
-            empty = '0' * (self.board_size * self.board_size)
-            self.ai_training_info = ['0' + empty for _ in range(10)]
-            self.ai_white_board   = empty
-            self.ai_black_board   = '1' * (self.board_size * self.board_size)
-        self.ai_training_info.append(self.make_board_string())
-        # call the parent implementation for all the normal bookkeeping
-        super().make_turn_info()

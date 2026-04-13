@@ -445,14 +445,19 @@ class GoBoard():
             piece_placement(self, piece, row, col)
             ui.refresh_board_pygame(self)
             return True
-        elif (self_death_rule(self, piece, self.whose_turn, set()) == 0):
-            ui.def_popup("Place the piece there would break the self death rule. Please try your turn again.", 2)
-            return False
         else:
-            piece_placement(self, piece, row, col)
-            ui.refresh_board_pygame(self)
-            self.killed_last_turn.clear()
-            return True
+            # Temporarily place the stone so self_death_rule sees the correct board state.
+            piece.stone_here_color = self.whose_turn.unicode
+            is_self_dead = (self_death_rule(self, piece, self.whose_turn, set()) == 0)
+            piece.stone_here_color = cf.rgb_grey
+            if is_self_dead:
+                ui.def_popup("Place the piece there would break the self death rule. Please try your turn again.", 2)
+                return False
+            else:
+                piece_placement(self, piece, row, col)
+                ui.refresh_board_pygame(self)
+                self.killed_last_turn.clear()
+                return True
 
     def ko_rule_break(self, piece: BoardNode) -> bool:
         '''
@@ -612,14 +617,22 @@ def play_piece_bot(self, row: int, col: int) -> bool:
     elif (self.kill_stones(piece) is True):
         piece_placement(self, piece, row, col)
         return True
-    elif (self_death_rule(self, piece, self.whose_turn, set()) == 0):
-        return False
-    elif fills_eye(self, piece, self.whose_turn.unicode, self.not_whose_turn.unicode):
-        return False
     else:
-        piece_placement(self, piece, row, col)
-        self.killed_last_turn.clear()
-        return True
+        # Temporarily place the stone so self_death_rule sees the correct board state.
+        # Without this, piece is grey and counts as a liberty for neighbouring own-color
+        # groups, causing genuine self-death positions to pass the check incorrectly.
+        piece.stone_here_color = self.whose_turn.unicode
+        is_self_dead = (self_death_rule(self, piece, self.whose_turn, set()) == 0)
+        if is_self_dead:
+            piece.stone_here_color = cf.rgb_grey
+            return False
+        elif fills_eye(self, piece, self.whose_turn.unicode, self.not_whose_turn.unicode):
+            piece.stone_here_color = cf.rgb_grey
+            return False
+        else:
+            piece_placement(self, piece, row, col)
+            self.killed_last_turn.clear()
+            return True
 
 
 def play_turn_bot_helper(self, truth_value, val) -> Union[Literal['Passed'], bool]:
