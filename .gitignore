@@ -4,4 +4,6 @@
 *.pkl
 *.bak
 *.jsonl
+build/
+dist/
 __pycache__

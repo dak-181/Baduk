@@ -168,6 +168,11 @@ def start_game_menu() -> str:
         "Exit Game",
     ]
 
+    if cf.RELEASE_MODE:
+        menu_buttons = [b for b in menu_buttons
+                        if b not in ("AI SelfPlay", "AI Training",
+                                     "Import SGF Files", "SGF Training")]
+
     f_title = _font(26, bold=True)
     f_btn   = _font(16, bold=True)
 

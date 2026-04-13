@@ -14,3 +14,8 @@ rgb_lavender = (186, 187, 241)
 AI_BOARD_SIZE        = 19
 MCTS_ITERATIONS      = 200 # used during self-play training
 PLAY_MCTS_ITERATIONS = 25   # used when playing against a human
+
+# ── Release mode ──────────────────────────────────────────────────────────────
+# Set to True when building the distributable exe.
+# Hides AI training, self-play, SGF import, and SGF training from the menu.
+RELEASE_MODE = True
