@@ -4,6 +4,7 @@
 *.pkl
 *.bak
 *.jsonl
+*.png
 build/
 dist/
 __pycache__

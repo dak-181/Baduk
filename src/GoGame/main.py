@@ -331,6 +331,85 @@ def _draw_pixel_board(screen, board_rows, x, y, cell, last_move_idx=None):
             pygame.draw.circle(screen, dot_color, (cx, cy), dot_r)
 
 
+def _save_selfplay_snapshot(log_lines: list, game_num: int) -> None:
+    """
+    Pull the most recent board rows from log_lines, render them using the
+    existing _draw_pixel_board helper, and save to traininghistory/.
+    Called from the main process where pygame is fully initialised.
+    """
+    import os, re
+
+    # find the most recent winner line for the result label
+    result_str = 'unknown'
+    for line in reversed(log_lines):
+        if line.startswith('winner is'):
+            raw = line.replace('winner is ', '').strip()
+            by_resignation = 'resignation' in raw
+            if raw.startswith('1'):
+                result_str = 'Black_wins_by_resignation' if by_resignation else 'Black_wins_by_score'
+            elif raw.startswith('0'):
+                result_str = 'White_wins_by_resignation' if by_resignation else 'White_wins_by_score'
+            break
+
+    # for scored games, append totals parsed from the score log lines
+    if 'by_score' in result_str:
+        black_total = white_total = None
+        for line in reversed(log_lines):
+            if line.startswith('white:') and 'total=' in line and white_total is None:
+                try:
+                    white_total = line.split('total=')[1].split()[0]
+                except Exception:
+                    pass
+            if line.startswith('black:') and 'total=' in line and black_total is None:
+                try:
+                    black_total = line.split('total=')[1].split()[0]
+                except Exception:
+                    pass
+            if black_total is not None and white_total is not None:
+                break
+        if black_total and white_total:
+            result_str += f'_B{black_total}_W{white_total}' 
+
+    # find the last block of consecutive board rows
+    board_rows = []
+    i = len(log_lines) - 1
+    while i >= 0 and not _is_board_row(log_lines[i]):
+        i -= 1
+    if i < 0:
+        return
+    while i >= 0 and _is_board_row(log_lines[i]):
+        board_rows.insert(0, log_lines[i])
+        i -= 1
+
+    if not board_rows:
+        return
+
+    # find last move from the most recent stats line before the board block
+    last_move = None
+    for line in reversed(log_lines[:i + 1]):
+        if 'pos=' in line and 'val=' in line:
+            try:
+                pos_part = line.split('pos=')[1].split()[0]
+                r, c = pos_part.split(',')
+                last_move = (int(r), int(c))
+            except Exception:
+                pass
+            break
+
+    # render to an offscreen surface using the existing pixel board renderer
+    cell = 28
+    board_size = len(board_rows[0])
+    w = board_size * cell
+    h = board_size * cell
+    surf = pygame.Surface((w, h))
+    _draw_pixel_board(surf, board_rows, 0, 0, cell, last_move_idx=last_move)
+
+    os.makedirs('traininghistory', exist_ok=True)
+    safe = re.sub(r'[^a-zA-Z0-9_]', '_', result_str).strip('_')
+    path = os.path.join('traininghistory', f'game_{game_num:04d}_{safe}.png')
+    pygame.image.save(surf, path)
+
+
 def _progress_screen_process(process, log_list, title: str, hint: str,
                               game_counter=None):
     """
@@ -376,7 +455,16 @@ def _progress_screen_process(process, log_list, title: str, hint: str,
     clock      = pygame.time.Clock()
     anim_frame = 0
     cancelled  = False
+    _last_snapshot_game = [0]  # tracks which game we last saved a snapshot for
 
+    # find the highest existing snapshot number so fresh runs pick up where they left off
+    import os, re as _re
+    _snap_offset = [0]
+    if os.path.isdir('traininghistory'):
+        for fname in os.listdir('traininghistory'):
+            m = _re.match(r'game_(\d+)', fname)
+            if m:
+                _snap_offset[0] = max(_snap_offset[0], int(m.group(1)))
     def _render_log(log_lines, y_start, final=False):
         """Render log lines, substituting consecutive board rows with a pixel grid."""
         # extract last move position from the most recent stats line
@@ -454,6 +542,16 @@ def _progress_screen_process(process, log_list, title: str, hint: str,
             # show as many recent lines as fit — board grids take multiple rows so
             # we can't know exactly without rendering; use last 60 lines as a window
             _render_log(all_lines[-20:], LOG_TOP)
+
+            # snapshot: save board image whenever a new self-play game completes
+            if game_counter is not None:
+                snap_game = game_counter[0]
+                if snap_game > _last_snapshot_game[0]:
+                    _last_snapshot_game[0] = snap_game
+                    try:
+                        _save_selfplay_snapshot(all_lines, _snap_offset[0] + snap_game)
+                    except Exception:
+                        pass  # never crash the progress screen
 
             pygame.display.flip()
             clock.tick(30)

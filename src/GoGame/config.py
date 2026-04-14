@@ -15,6 +15,13 @@ AI_BOARD_SIZE        = 19
 MCTS_ITERATIONS      = 200 # used during self-play training
 PLAY_MCTS_ITERATIONS = 25   # used when playing against a human
 
+# Set to True to allow the AI to resign during self-play when its position is
+# hopeless. Requires two consecutive turns below the value threshold.
+# Disable this during early training when the value head is not yet calibrated —
+# premature resignations produce incorrectly labelled training samples.
+ALLOW_RESIGNATION = False
+RESIGNATION_THRESHOLD = -0.99  # value below which the AI considers resigning (-1.0 to 0.0)
+
 # ── Release mode ──────────────────────────────────────────────────────────────
 # Set to True when building the distributable exe.
 # Hides AI training, self-play, SGF import, and SGF training from the menu.

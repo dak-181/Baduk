@@ -71,6 +71,7 @@ class NNBoard(GoBoard):
         self.ai_white_board = empty_board
         self.ai_black_board = '1' * (self.board_size * self.board_size)
         self.resigned_player = None  # set to the resigning Player if game ends by resignation
+        self._consecutive_low_value = 0  # counts consecutive turns below resignation threshold
         return self.play_game_playing_mode(from_file, fixes_handicap)
 
     def play_game_playing_mode(self, from_file, fixes_handicap) -> bool:
@@ -96,6 +97,8 @@ class NNBoard(GoBoard):
         else:
             winner = self.making_score_board_object()
             print(f"winner is {winner}")
+
+        save_selfplay_sgf(self, winner)
         import json
 
         def perspective_value(winner: int, turn_color: int) -> float:
@@ -188,13 +191,17 @@ class NNBoard(GoBoard):
             self.print_board()
             print(f"  t={t1-t0:.2f}s  val={val}  pos={val//self.board_size},{val%self.board_size}  turn={self.turn_num}")
 
-            # resignation: if the current player's position is hopeless (value < -0.9)
-            # and we're past the opening, end the game rather than playing it out.
-            # AGZ threshold: -0.9, minimum turn: 50.
-            if self.turn_num > 50 and root_value < -0.9:
-                print(f"  Resigned at turn {self.turn_num} (value={root_value:.3f})")
-                self.resigned_player = self.whose_turn
-                self.times_passed = 2
+            # resignation: if the current player's position is hopeless for two
+            # consecutive turns and we're past the opening, end the game.
+            # Threshold: -0.95. Minimum turn: 50. Can be disabled via config.
+            if cf.ALLOW_RESIGNATION and self.turn_num > 50 and root_value < cf.RESIGNATION_THRESHOLD:
+                self._consecutive_low_value += 1
+                if self._consecutive_low_value >= 2:
+                    print(f"  Resigned at turn {self.turn_num} (value={root_value:.3f})")
+                    self.resigned_player = self.not_whose_turn
+                    self.times_passed = 2
+            else:
+                self._consecutive_low_value = 0
 
         self.make_turn_info()
 
@@ -231,6 +238,82 @@ class NNBoard(GoBoard):
     def making_score_board_object(self):
         self.scoring_dead = NNScoringBoard(self)
         return self.scoring_dead.dealing_with_dead_stones()
+
+
+def save_selfplay_sgf(board: 'NNBoard', winner: int) -> None:
+    """
+    Write a standard SGF file for a completed self-play game to traininghistory/.
+    Filename: traininghistory/game_NNNN_<result>.sgf
+    Picks up from the highest existing file number so runs never overwrite.
+    """
+    import os, re
+
+    sgf_dir = 'traininghistory'
+    os.makedirs(sgf_dir, exist_ok=True)
+
+    # derive next game number from existing files
+    existing = [f for f in os.listdir(sgf_dir) if f.endswith('.sgf')]
+    game_num = 1
+    for fname in existing:
+        m = re.match(r'game_(\d+)', fname)
+        if m:
+            game_num = max(game_num, int(m.group(1)) + 1)
+
+    # build RE (result) field
+    resigned = getattr(board, 'resigned_player', None)
+    if resigned is not None:
+        result_label = 'Black_wins_by_resignation' if winner == 1 else 'White_wins_by_resignation'
+        re_str = 'B+R' if winner == 1 else 'W+R'
+    else:
+        pb = board.player_black
+        pw = board.player_white
+        b_total = pb.komi + pb.territory + pb.black_set_len
+        w_total = pw.komi + pw.territory + pw.white_set_len
+        diff = abs(b_total - w_total)
+        winner_label = 'Black' if winner == 1 else 'White'
+        result_label = f'{winner_label}_wins_by_score_B{b_total}_W{w_total}'
+        re_str = f'B+{diff:.1f}' if winner == 1 else f'W+{diff:.1f}'
+
+    filename = os.path.join(sgf_dir, f'game_{game_num:04d}_{result_label}.sgf')
+
+    # SGF coordinate helper: (row, col) -> two-char string e.g. (3,15) -> 'pd'
+    def to_sgf_coord(row: int, col: int) -> str:
+        return chr(ord('a') + col) + chr(ord('a') + row)
+
+    # build move sequence from position_played_log
+    # entries are: (color, row, col), ("Pass", -3, -3), or plain strings
+    # track whose turn it is by alternating — black always moves first
+    move_tokens = []
+    current_color = 'B'
+    for entry in board.position_played_log:
+        if not isinstance(entry, tuple):
+            continue  # skip "Scoring", "Resumed", "Dead Removed" etc.
+        color, row, col = entry
+        if color == 'Black':
+            move_tokens.append(('B', to_sgf_coord(row, col)))
+            current_color = 'W'
+        elif color == 'White':
+            move_tokens.append(('W', to_sgf_coord(row, col)))
+            current_color = 'B'
+        elif color == 'Pass':
+            # SGF pass is an empty coordinate []
+            move_tokens.append((current_color, ''))
+            current_color = 'W' if current_color == 'B' else 'B' 
+
+    komi = board.player_white.komi
+    size = board.board_size
+
+    lines = [f'(;GM[1]FF[4]CA[UTF-8]SZ[{size}]KM[{komi}]RE[{re_str}]PB[AI]PW[AI]']
+    for color, coord in move_tokens:
+        lines.append(f';{color}[{coord}]')
+    lines.append(')')
+
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + '\n')
+        print(f"  [sgf] saved: {filename}")
+    except Exception as e:
+        print(f"  [sgf] failed: {e}")
 
 
 class NNScoringBoard(ScoringBoard):

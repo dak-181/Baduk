@@ -37,7 +37,7 @@ python run.py
 
 | Button | Description |
 |---|---|
-| **Load Game** | Load a previously saved game from the `pklfiles/` folder |
+| **Load Game** | Load a previously saved game from the `saves/` folder |
 | **New Custom Game** | Start a new game with custom board size, player names, komi, and handicap |
 | **New Default Game** | Start a 9×9 game with default settings (7.5 komi, Player 1 vs Player 2) |
 | **Play Against AI** | Play against either the random bot or a trained neural network model |
@@ -77,7 +77,7 @@ The board will display territory markers (dark squares for black territory, ligh
 
 ### Saving and Loading
 
-- Games are saved as `.pkl` files in a `pklfiles/` subfolder
+- Games are saved as `.pkl` files in a `saves/` subfolder
 - Click **Save Game** at any point during play
 - Click **Load Game** from the main menu to resume a saved game
 
@@ -104,6 +104,7 @@ Generates training data by having the neural network play against itself.
 2. Enter the number of games to play (default: 5)
 3. Progress is shown on screen — press **Escape** to stop immediately
 4. Data is saved to `saved_self_play.jsonl` and can be used with **AI Training**
+5. A board snapshot () and full game record () are saved to `traininghistory/` after each game
 
 ### AI Training
 
@@ -138,12 +139,13 @@ Trains a separate neural network model on SGF-imported data, completely independ
 
 ## AI Configuration
 
-Three settings in `src/GoGame/config.py` control the AI:
+Three settings in `src/GoGame/config.py` control the AI, plus a release mode flag:
 
 ```python
 AI_BOARD_SIZE        = 19   # 9, 13, or 19
 MCTS_ITERATIONS      = 200  # Used during self-play training
 PLAY_MCTS_ITERATIONS = 25   # Used when playing against a human
+RELEASE_MODE         = False # Set to True before building the distributable exe
 ```
 
 Iterations: 25 = fast/weak · 200 = strong · 800 = very strong/slow.
@@ -222,8 +224,9 @@ src/GoGame/
     nnmcst.py                   ← neural net MCTS
     mcst.py                     ← base MCTS classes
     sgf_to_training.py          ← SGF to training data converter
-pklfiles/                       ← saved games
+saves/                          ← saved games
 sgf/                            ← place SGF files here for import
+traininghistory/                ← board snapshots (.png) and full game records (.sgf) from self-play
 model.weights.h5                ← self-play model weights
 other_play.weights.h5           ← SGF-trained model weights
 saved_self_play.jsonl           ← self-play training data

@@ -5,13 +5,13 @@ import GoGame.pygame_ui as pg_ui
 
 
 def move_to_pkl_directory() -> str:
-    "Returns the absolute path to the pklfiles subdirectory, creating it if needed. Does NOT chdir."
+    "Returns the absolute path to the saves subdirectory, creating it if needed. Does NOT chdir."
     from os import getcwd, path, makedirs
     import re
     wd = getcwd()
-    # strip any trailing pklfiles segments to always resolve from project root
-    base = re.sub(r'[/\\]pklfiles$', '', wd)
-    full_path = path.join(base, 'pklfiles')
+    # strip any trailing saves segments to always resolve from project root
+    base = re.sub(r'[/\\]saves$', '', wd)
+    full_path = path.join(base, 'saves')
     makedirs(full_path, exist_ok=True)
     return full_path
 
