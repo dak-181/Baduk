@@ -238,10 +238,13 @@ class NNMCST(MCST):
         choice_weights = self.get_deep_info()
         the_range = list(range(_MOVES))
         from random import choices
-        if self.turn_num < 60:
+        if self.turn_num < 100:
             the_range = the_range[:-1]
             choice_weights = choice_weights[:-1]
         # suppress first-line moves for the first 100 turns
+        # always apply the filter unconditionally — the old conditional check
+        # would skip filtering entirely if all non-first-line weights were 0,
+        # allowing first-line moves through the all-zeros fallback below.
         if self.turn_num < 100:
             first_line = set()
             for i in range(_BOARD):
@@ -251,7 +254,7 @@ class NNMCST(MCST):
                 first_line.add(i * _BOARD + (_BOARD - 1)) # col 18
             paired = [(v, w) for v, w in zip(the_range, choice_weights)
                       if v not in first_line]
-            if any(w > 0 for _, w in paired):
+            if paired:
                 the_range, choice_weights = zip(*paired)
                 the_range      = list(the_range)
                 choice_weights = list(choice_weights)
@@ -357,7 +360,15 @@ class NNMCST(MCST):
         tries = 0
         while not legal_move:
             move = argmax(policy_copy)
-            if move != _PASS:
+            if move == _PASS and self.turn_num < 100:
+                # suppress pass during tree search before turn 100 —
+                # treat it like an illegal move and try the next best option
+                policy_copy[0][move] = -2
+                tries += 1
+                if tries >= max_tries:
+                    selected_move = "Pass"
+                    legal_move = True
+            elif move != _PASS:
                 policy_copy[0][move] = -2
                 board_node = self.board[move // _BOARD][move % _BOARD]
                 legal_move = self.test_piece_placement(board_node, node)
@@ -382,9 +393,12 @@ class NNMCST(MCST):
         '''
         if self.cache_hash in self.cache:
             moves = list(self.cache[self.cache_hash])
-            moves += ["Pass"]
+            if self.turn_num >= 100:
+                moves += ["Pass"]
             return moves
-        legal_moves: List[Union[BoardNode, Literal["Pass"]]] = ["Pass"]
+        legal_moves: List[Union[BoardNode, Literal["Pass"]]] = []
+        if self.turn_num >= 100:
+            legal_moves.append("Pass")
         legal_moves_set: Union[Set[None], Set[BoardNode]] = set()
         for board_node in self.board_BoardString.member_set:
             output = self.test_piece_placement(board_node, node, simulate, final_test)

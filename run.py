@@ -1,5 +1,12 @@
 import sys, os
 
+# Suppress TensorFlow info/warning messages and SDL audio init noise.
+# Must be set before any TF or pygame imports.
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')       # suppress TF C++ logs (0=all, 3=errors only)
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')      # suppress oneDNN floating-point notice
+os.environ.setdefault('TF_TRT_LOGGER_VERBOSITY', '0')    # suppress TF-TRT warnings
+os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')         # suppress SDL audio init noise if no audio
+
 # When running as a PyInstaller bundle, _MEIPASS holds the unpacked temp directory.
 # We need to add it to sys.path so GoGame can be found, and set the working directory
 # to the exe's own folder so relative paths (h5 files, pklfiles/, etc.) resolve correctly.

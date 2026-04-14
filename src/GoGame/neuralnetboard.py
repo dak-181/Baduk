@@ -193,8 +193,8 @@ class NNBoard(GoBoard):
 
             # resignation: if the current player's position is hopeless for two
             # consecutive turns and we're past the opening, end the game.
-            # Threshold: -0.95. Minimum turn: 50. Can be disabled via config.
-            if cf.ALLOW_RESIGNATION and self.turn_num > 50 and root_value < cf.RESIGNATION_THRESHOLD:
+            # Threshold: -0.95. Minimum turn: 100. Can be disabled via config.
+            if cf.ALLOW_RESIGNATION and self.turn_num > 100 and root_value < cf.RESIGNATION_THRESHOLD:
                 self._consecutive_low_value += 1
                 if self._consecutive_low_value >= 2:
                     print(f"  Resigned at turn {self.turn_num} (value={root_value:.3f})")

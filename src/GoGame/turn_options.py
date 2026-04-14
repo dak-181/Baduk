@@ -7,6 +7,11 @@ from typing import Optional
 WIN_CLOSED = None
 
 
+def _is_ai_board(board: GoBoard) -> bool:
+    """Returns True if the board is a human vs AI game (BotBoard or NNBotBoard)."""
+    return hasattr(board, '_nn_model') or hasattr(board, 'play_turn_bot')
+
+
 def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> None:
     '''
     Handles various game options based on the given event.
@@ -34,6 +39,10 @@ def normal_turn_options(board: GoBoard, event, text: Optional[str] = None) -> No
     elif event == "Undo Turn":
         if board.turn_num == 0:
             ui.def_popup("You can't undo when nothing has happened.", 2)
+        elif _is_ai_board(board) and board.whose_turn == board.player_black:
+            # It's the human's turn but the last move was the AI's — block undo
+            # so the player can't cherry-pick AI responses.
+            ui.def_popup("You can't undo during a game against the AI.", 2)
         else:
             from GoGame.undoing import undo_checker
             undo_checker(board)

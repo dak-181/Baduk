@@ -361,12 +361,19 @@ class MCST:
         piece.stone_here_color = node.whose_turn.unicode
         neighboring_pieces: Set[BoardNode] = piece.connections
         truth_value: bool = False
+        all_captured: Set[BoardNode] = set()
         for neighbor in neighboring_pieces:
             if neighbor.stone_here_color == node.not_whose_turn.unicode:
                 if (self_death_rule(node, neighbor, node.not_whose_turn, set()) == 0):
-                    if not testing:
-                        remove_stones(node)
+                    # accumulate all captured groups before removing any —
+                    # avoids visit_kill being overwritten by each self_death_rule call
+                    all_captured.update(node.visit_kill)
                     truth_value = True
+        if truth_value and not testing:
+            # remove all captured stones at once
+            for position in all_captured:
+                position.stone_here_color = cf.rgb_grey
+            node.visit_kill = all_captured
         if truth_value is False or testing is True:
             piece.stone_here_color = cf.rgb_grey
         return truth_value
@@ -570,7 +577,7 @@ class MCST:
         '''Loads backup information into the current state of the MCST node.'''
         self.reload_board_string(backup[0])
         node.cache_hash = backup[2]
-        if backup[1] == cf.rgb_black:
+        if backup[1] == "Black":
             node.whose_turn = node.player_black
             node.not_whose_turn = node.player_white
         else:
