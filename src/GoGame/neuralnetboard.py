@@ -70,6 +70,7 @@ class NNBoard(GoBoard):
             self.ai_training_info.append(empty_board)
         self.ai_white_board = empty_board
         self.ai_black_board = '1' * (self.board_size * self.board_size)
+        self.resigned_player = None  # set to the resigning Player if game ends by resignation
         return self.play_game_playing_mode(from_file, fixes_handicap)
 
     def play_game_playing_mode(self, from_file, fixes_handicap) -> bool:
@@ -86,8 +87,15 @@ class NNBoard(GoBoard):
 
     def playing_mode_end_of_game(self) -> bool:
         """Score the game and save training data to saved_self_play.jsonl."""
-        winner = self.making_score_board_object()
-        print(f"winner is {winner}")
+        # If the game ended by resignation, the resigning player lost.
+        # Skip territory scoring entirely — the board is unfinished and dead
+        # stones haven't been removed, so the score would be unreliable.
+        if getattr(self, 'resigned_player', None) is not None:
+            winner = 0 if self.resigned_player == self.player_black else 1
+            print(f"winner is {winner} (by resignation)")
+        else:
+            winner = self.making_score_board_object()
+            print(f"winner is {winner}")
         import json
 
         def perspective_value(winner: int, turn_color: int) -> float:
@@ -182,9 +190,10 @@ class NNBoard(GoBoard):
 
             # resignation: if the current player's position is hopeless (value < -0.9)
             # and we're past the opening, end the game rather than playing it out.
-            # AGZ threshold: -0.9, minimum turn: 20.
-            if self.turn_num > 20 and root_value < -0.9:
+            # AGZ threshold: -0.9, minimum turn: 50.
+            if self.turn_num > 50 and root_value < -0.9:
                 print(f"  Resigned at turn {self.turn_num} (value={root_value:.3f})")
+                self.resigned_player = self.whose_turn
                 self.times_passed = 2
 
         self.make_turn_info()
